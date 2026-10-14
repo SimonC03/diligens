@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from diligens.models import Facit, Ledger
-from diligens.sie.generator import generate_demo_company
-from diligens.sie.parser import parse_sie
+from diligens.sie.generator import build_demo_company, generate_demo_company
+from diligens.sie.parser import check_integrity, parse_sie
 
 SEED = 42
 
@@ -125,3 +125,20 @@ def test_generator_plants_domain_anomalies(demo: tuple[Path, Facit, Ledger]) -> 
     for v in ledger.vouchers:
         if any(t.account in {"5615", "3990", "6550"} for t in v.transactions):
             assert v.ref in planted, v.ref
+
+
+def test_generated_file_round_trips(demo: tuple[Path, Facit, Ledger]) -> None:
+    _, _, ledger = demo
+
+    assert check_integrity(ledger) == []
+    assert ledger.warnings == []
+
+    ib_2025 = {b.account: b.amount for b in ledger.opening_balances if b.year_index == 0}
+    ub_2024 = {b.account: b.amount for b in ledger.closing_balances if b.year_index == -1}
+    assert ib_2025 == ub_2024
+    assert sum(ib_2025.values(), Decimal("0")) == Decimal("0")
+    assert ib_2025["2099"] < 0  # 2024 profit carried to equity
+
+    # The writer and parser are exact inverses: the file holds the in-memory ledger.
+    rebuilt, _ = build_demo_company(SEED)
+    assert ledger == rebuilt
