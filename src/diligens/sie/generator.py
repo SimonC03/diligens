@@ -1,6 +1,6 @@
 """Synthetic demo company: a fictional Swedish consultancy, two fiscal years 2024 and 2025.
 
-All amounts are built deterministically from `random.Random(seed)`. The ledger is assembled
+All amounts are Decimal, drawn deterministically from the seed. The ledger is assembled
 from voucher drafts, so IB, UB and RES follow from the transactions and the integrity rules
 in docs/DOMAIN.md section 1 hold by construction. Planted anomalies (section 6) are listed
 in the returned Facit.
@@ -10,7 +10,7 @@ import calendar
 import datetime as dt
 import random
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from diligens.models import (
@@ -25,6 +25,7 @@ from diligens.models import (
     Transaction,
     Voucher,
 )
+from diligens.sie.accounts import is_balance_account, is_result_account
 from diligens.sie.writer import write_sie
 
 COMPANY_NAME = "Demobolaget Konsult AB"
@@ -32,15 +33,20 @@ ORG_NR = "999999-9999"
 PROGRAM = "Diligens demogenerator"
 GENERATED = dt.date(2026, 1, 15)
 YEARS = (2024, 2025)
-FIRST_DAY = dt.date(2024, 1, 1)
 LAST_DAY = dt.date(2025, 12, 31)
 
 # Series as in common Swedish accounting programs.
 MANUAL, SALES, RECEIPTS, PURCHASES, PAYMENTS, PAYROLL = "A", "B", "C", "D", "E", "L"
 
-VAT = Decimal("0.25")
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
+VAT = Decimal("0.25")
+SOCIAL_FEES = Decimal("0.3142")
+PENSION = Decimal("0.045")
+PENSION_TAX = Decimal("0.2426")  # särskild löneskatt
+HOLIDAY_PAY = Decimal("0.12")
+WITHHOLDING = Decimal("0.30")
+CORPORATE_TAX = Decimal("0.206")
 
 ACCOUNTS: dict[str, str] = {
     "1220": "Inventarier och verktyg",
@@ -53,11 +59,16 @@ ACCOUNTS: dict[str, str] = {
     "2350": "Andra långfristiga skulder till kreditinstitut",
     "2440": "Leverantörsskulder",
     "2512": "Beräknad inkomstskatt",
+    "2514": "Beräknad särskild löneskatt på pensionskostnader",
+    "2518": "Betald F-skatt",
     "2611": "Utgående moms på försäljning inom Sverige, 25 %",
     "2641": "Debiterad ingående moms",
     "2650": "Redovisningskonto för moms",
     "2710": "Personalskatt",
     "2731": "Avräkning lagstadgade sociala avgifter",
+    "2898": "Outtagen vinstutdelning",
+    "2920": "Upplupna semesterlöner",
+    "2940": "Upplupna lagstadgade sociala och andra avgifter",
     "3041": "Försäljning tjänster 25 % sv",
     "3990": "Övriga ersättningar och intäkter",
     "4600": "Legoarbeten och underentreprenader",
@@ -75,8 +86,11 @@ ACCOUNTS: dict[str, str] = {
     "6570": "Bankkostnader",
     "6991": "Övriga externa kostnader, avdragsgilla",
     "7210": "Löner till tjänstemän",
+    "7290": "Förändring av semesterlöneskuld",
     "7411": "Pensionsförsäkringspremier",
     "7510": "Arbetsgivaravgifter 31,42 %",
+    "7519": "Sociala avgifter för semester- och löneskulder",
+    "7533": "Särskild löneskatt för pensionskostnader",
     "7610": "Utbildning",
     "7832": "Avskrivningar på inventarier och verktyg",
     "8410": "Räntekostnader för långfristiga skulder",
@@ -86,26 +100,93 @@ ACCOUNTS: dict[str, str] = {
 
 # Net revenue per year and monthly profile (sums to 12): July holidays, strong autumn.
 REVENUE = {2024: Decimal("38500000"), 2025: Decimal("41500000")}
-SEASON = (0.95, 1.0, 1.1, 1.0, 1.05, 1.0, 0.45, 0.85, 1.15, 1.15, 1.15, 1.15)
+SEASON = tuple(
+    Decimal(s)
+    for s in (
+        "0.95",
+        "1.0",
+        "1.1",
+        "1.0",
+        "1.05",
+        "1.0",
+        "0.45",
+        "0.85",
+        "1.15",
+        "1.15",
+        "1.15",
+        "1.15",
+    )
+)
+SUBCONTRACTING = Decimal("0.13")
 
-# Recurring supplier costs: account, monthly net amount, invoices per month, VAT rate.
-SUPPLIER_COSTS: tuple[tuple[str, int, int, Decimal, str], ...] = (
-    ("5410", 22000, 1, VAT, "Kontorsutrustning"),
-    ("5800", 38000, 2, Decimal("0.12"), "Resor och hotell"),
-    ("5910", 20000, 1, VAT, "Annonsering"),
-    ("6110", 7000, 1, VAT, "Kontorsmaterial"),
-    ("6212", 16000, 1, VAT, "Mobil och data"),
-    ("6310", 9000, 1, ZERO, "Företagsförsäkring"),
-    ("6530", 18000, 1, VAT, "Redovisning och lön"),
-    ("6540", 56000, 2, VAT, "IT-drift och licenser"),
-    ("6991", 5000, 1, VAT, "Övriga kostnader"),
-    ("7610", 28000, 1, VAT, "Kurs och utbildning"),
+# Recurring supplier costs: account, monthly net amount, invoices per month, VAT rate, text.
+SUPPLIER_COSTS: tuple[tuple[str, Decimal, int, Decimal, str], ...] = (
+    ("5410", Decimal("22000"), 1, VAT, "Kontorsutrustning"),
+    ("5800", Decimal("38000"), 2, Decimal("0.12"), "Resor och hotell"),
+    ("5910", Decimal("20000"), 1, VAT, "Annonsering"),
+    ("6110", Decimal("7000"), 1, VAT, "Kontorsmaterial"),
+    ("6212", Decimal("16000"), 1, VAT, "Mobil och data"),
+    ("6310", Decimal("9000"), 1, ZERO, "Företagsförsäkring"),
+    ("6530", Decimal("18000"), 1, VAT, "Redovisning och lön"),
+    ("6540", Decimal("56000"), 2, VAT, "IT-drift och licenser"),
+    ("6991", Decimal("5000"), 1, VAT, "Övriga kostnader"),
+    ("7610", Decimal("28000"), 1, VAT, "Kurs och utbildning"),
 )
 
-SOCIAL_FEES = Decimal("0.3142")
-PENSION = Decimal("0.045")
-WITHHOLDING = Decimal("0.30")
-CORPORATE_TAX = Decimal("0.206")
+HEADCOUNT = {2024: 30, 2025: 32}
+AVG_SALARY = {2024: Decimal("47000"), 2025: Decimal("48500")}
+# Holiday pay taken, in months of accrual: most in July, some around Christmas.
+HOLIDAY_TAKEN = {7: Decimal("8"), 12: Decimal("3")}
+PRELIMINARY_TAX = {2024: Decimal("95000.00"), 2025: Decimal("100000.00")}
+DIVIDEND_2025 = Decimal("3000000.00")
+
+# Balance sheet at 2024-01-01, including the December 2023 liabilities settled in 2024.
+# 2091 is the balancing figure.
+OPENING_2024: dict[str, Decimal] = {
+    "1220": Decimal("1200000.00"),
+    "1229": Decimal("-300000.00"),
+    "1510": Decimal("4250000.00"),
+    "1930": Decimal("4600000.00"),
+    "2081": Decimal("-100000.00"),
+    "2350": Decimal("-3000000.00"),
+    "2440": Decimal("-875000.00"),
+    "2514": Decimal("-180000.00"),
+    "2650": Decimal("-610000.00"),
+    "2710": Decimal("-415000.00"),
+    "2731": Decimal("-435000.00"),
+    "2920": Decimal("-900000.00"),
+    "2940": Decimal("-282780.00"),
+}
+
+
+def _round(value: Decimal) -> Decimal:
+    return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _kr(value: Decimal) -> Decimal:
+    """Round to whole kronor, kept with two decimals."""
+    return value.quantize(Decimal("1"), rounding=ROUND_HALF_UP).quantize(CENT)
+
+
+class _Rand:
+    """Integer draws built on random(), the one stream Python keeps stable across versions."""
+
+    def __init__(self, seed: int) -> None:
+        self._rng = random.Random(seed)
+
+    def between(self, low: int, high: int) -> int:
+        return low + int(self._rng.random() * (high - low + 1))
+
+    def vary(self, base: Decimal, percent: int) -> Decimal:
+        """`base` plus or minus up to `percent` percent, in whole kronor."""
+        return _kr(base * (100 + self.between(-percent, percent)) / 100)
+
+    def split(self, total: Decimal, parts: int, low: int, high: int) -> list[Decimal]:
+        """Split `total` (whole kronor) into random parts that add up exactly."""
+        weights = [self.between(low, high) for _ in range(parts)]
+        amounts = [_kr(total * w / sum(weights)) for w in weights]
+        amounts[-1] += total - sum(amounts, ZERO)
+        return amounts
 
 
 @dataclass
@@ -120,7 +201,7 @@ class _Draft:
 
 @dataclass
 class _Book:
-    rng: random.Random
+    rng: _Rand
     drafts: list[_Draft] = field(default_factory=list)
 
     def add(
@@ -144,15 +225,17 @@ class _Book:
         account: str,
         net: Decimal,
         vat_rate: Decimal = VAT,
+        deductible: Decimal = Decimal("1"),
         anomaly: int | None = None,
-        payable_days: int = 30,
     ) -> _Draft:
+        """Invoice plus its payment about 30 days later. Non deductible VAT becomes cost."""
         vat = _round(net * vat_rate)
-        lines = [(account, net), ("2440", -(net + vat))]
-        if vat:
-            lines.insert(1, ("2641", vat))
+        input_vat = _round(vat * deductible)
+        lines = [(account, net + vat - input_vat), ("2440", -(net + vat))]
+        if input_vat:
+            lines.insert(1, ("2641", input_vat))
         draft = self.add(PURCHASES, date, text, lines, anomaly)
-        pay_date = date + dt.timedelta(days=payable_days + self.rng.randint(-3, 3))
+        pay_date = date + dt.timedelta(days=30 + self.rng.between(-3, 3))
         if pay_date <= LAST_DAY:
             self.add(
                 PAYMENTS,
@@ -174,7 +257,7 @@ class _Book:
         draft = self.add(
             SALES, date, text, [("1510", net + vat), ("3041", -net), ("2611", -vat)], anomaly
         )
-        pay_date = date + dt.timedelta(days=30 + self.rng.randint(-4, 12))
+        pay_date = date + dt.timedelta(days=30 + self.rng.between(-4, 12))
         if paid and pay_date <= LAST_DAY:
             self.add(
                 RECEIPTS,
@@ -183,15 +266,6 @@ class _Book:
                 [("1930", net + vat), ("1510", -(net + vat))],
             )
         return draft
-
-
-def _round(value: Decimal) -> Decimal:
-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
-
-
-def _kr(value: float) -> Decimal:
-    """Whole kronor as Decimal with two decimals."""
-    return Decimal(round(value)).quantize(CENT)
 
 
 def _month_end(year: int, month: int) -> dt.date:
@@ -206,107 +280,124 @@ def _months() -> list[tuple[int, int]]:
     return [(y, m) for y in YEARS for m in range(1, 13)]
 
 
-OPENING_2024: dict[str, Decimal] = {
-    "1220": Decimal("1200000.00"),
-    "1229": Decimal("-300000.00"),
-    "1510": Decimal("4250000.00"),
-    "1930": Decimal("3100000.00"),
-    "2081": Decimal("-100000.00"),
-    "2350": Decimal("-3000000.00"),
-    "2440": Decimal("-875000.00"),
-}
+def _monthly_revenue(year: int) -> list[Decimal]:
+    targets = [_kr(REVENUE[year] * s / 12) for s in SEASON]
+    targets[-1] += REVENUE[year] - sum(targets, ZERO)
+    return targets
 
 
 def _opening_settlements(book: _Book) -> None:
-    """Pay the 2023 receivables and payables in the opening balance during January 2024."""
-    receivables = [
-        Decimal("1350000.00"),
-        Decimal("1100000.00"),
-        Decimal("950000.00"),
-        Decimal("850000.00"),
-    ]
-    for i, amount in enumerate(receivables, start=1):
+    """Settle the December 2023 items in the opening balance during 2024."""
+    receivables = ("1350000.00", "1100000.00", "950000.00", "850000.00")
+    for i, raw in enumerate(receivables, start=1):
+        amount = Decimal(raw)
         book.add(
             RECEIPTS,
             dt.date(2024, 1, 5 + 5 * i),
             f"Inbetalning kundfaktura 2023, kund {1000 + i}",
             [("1930", amount), ("1510", -amount)],
         )
-    payables = [Decimal("400000.00"), Decimal("275000.00"), Decimal("200000.00")]
-    for i, amount in enumerate(payables, start=1):
+    for i, raw in enumerate(("400000.00", "275000.00", "200000.00"), start=1):
+        amount = Decimal(raw)
         book.add(
             PAYMENTS,
             dt.date(2024, 1, 8 + 6 * i),
             f"Betalning leverantörsfaktura 2023, leverantör {i}",
             [("2440", amount), ("1930", -amount)],
         )
+    tax, fees = -OPENING_2024["2710"], -OPENING_2024["2731"]
+    book.add(
+        MANUAL,
+        dt.date(2024, 1, 12),
+        "Skattedeklaration löner 2023-12",
+        [("2710", tax), ("2731", fees), ("1930", -(tax + fees))],
+    )
+    vat = -OPENING_2024["2650"]
+    book.add(
+        MANUAL, dt.date(2024, 1, 26), "Betalning moms 2023-12", [("2650", vat), ("1930", -vat)]
+    )
+    pension_tax = -OPENING_2024["2514"]
+    book.add(
+        MANUAL,
+        dt.date(2024, 5, 12),
+        "Betalning särskild löneskatt 2023",
+        [("2514", pension_tax), ("1930", -pension_tax)],
+    )
 
 
 def _sales(book: _Book) -> None:
     rng = book.rng
     invoice_no = 24000
-    for year, month in _months():
-        target = REVENUE[year] * Decimal(str(SEASON[month - 1])) / 12
-        count = rng.randint(19, 21)
-        weights = [rng.uniform(0.4, 1.8) for _ in range(count)]
-        total_weight = sum(weights)
-        amounts = [_kr(float(target) * w / total_weight) for w in weights]
-        amounts[-1] += _kr(float(target)) - sum(amounts, ZERO)
-        for amount in amounts:
-            invoice_no += 1
-            customer = rng.randint(1001, 1060)
-            day = rng.randint(1, 28)
-            book.customer_invoice(
-                dt.date(year, month, day), f"Faktura {invoice_no} kund {customer}", amount
-            )
+    for year in YEARS:
+        for month, target in enumerate(_monthly_revenue(year), start=1):
+            for amount in rng.split(target, rng.between(19, 21), 40, 180):
+                invoice_no += 1
+                book.customer_invoice(
+                    dt.date(year, month, rng.between(1, 28)),
+                    f"Faktura {invoice_no} kund {rng.between(1001, 1060)}",
+                    amount,
+                )
 
 
 def _purchases(book: _Book) -> None:
     rng = book.rng
-    for year, month in _months():
-        rent = Decimal("145000.00")
-        book.supplier_invoice(
-            dt.date(year, month, 1), f"Hyra kontor {year}-{month:02d}", "5010", rent
-        )
-
-        sub_total = float(REVENUE[year]) / 12 * SEASON[month - 1] * 0.13
-        weights = [rng.uniform(0.6, 1.4) for _ in range(3)]
-        for weight in weights:
+    for year in YEARS:
+        for month, revenue in enumerate(_monthly_revenue(year), start=1):
             book.supplier_invoice(
-                dt.date(year, month, rng.randint(3, 27)),
-                f"Underkonsult uppdrag {rng.randint(100, 199)}",
-                "4600",
-                _kr(sub_total * weight / sum(weights)),
+                dt.date(year, month, 1),
+                f"Hyra kontor {year}-{month:02d}",
+                "5010",
+                Decimal("145000.00"),
             )
-
-        for account, monthly, count, vat_rate, label in SUPPLIER_COSTS:
-            for _ in range(count):
-                net = _kr(monthly / count * rng.uniform(0.75, 1.25))
+            for amount in rng.split(_kr(revenue * SUBCONTRACTING), 3, 60, 140):
                 book.supplier_invoice(
-                    dt.date(year, month, rng.randint(2, 27)), label, account, net, vat_rate
+                    dt.date(year, month, rng.between(3, 27)),
+                    f"Underkonsult uppdrag {rng.between(100, 199)}",
+                    "4600",
+                    amount,
                 )
+            for account, monthly, count, vat_rate, label in SUPPLIER_COSTS:
+                for _ in range(count):
+                    book.supplier_invoice(
+                        dt.date(year, month, rng.between(2, 27)),
+                        label,
+                        account,
+                        rng.vary(monthly / count, 25),
+                        vat_rate,
+                    )
 
 
 def _payroll(book: _Book) -> None:
+    """Salaries with employer fees, pension, särskild löneskatt and holiday pay accrual."""
     rng = book.rng
-    headcount = {2024: 30, 2025: 32}
-    avg_salary = {2024: 47000, 2025: 48500}
+    pension_tax_2024 = ZERO
     for year, month in _months():
-        gross = _kr(headcount[year] * avg_salary[year] * rng.uniform(0.98, 1.02))
+        gross = rng.vary(HEADCOUNT[year] * AVG_SALARY[year], 2)
         tax = _round(gross * WITHHOLDING)
         fees = _round(gross * SOCIAL_FEES)
         pension = _round(gross * PENSION)
-        payday = dt.date(year, month, 25)
+        pension_tax = _round(pension * PENSION_TAX)
+        accrual = _round(gross * HOLIDAY_PAY)
+        holiday = accrual - _round(accrual * HOLIDAY_TAKEN.get(month, ZERO))
+        holiday_fees = _round(holiday * SOCIAL_FEES)
+        if year == 2024:
+            pension_tax_2024 += pension_tax
         book.add(
             PAYROLL,
-            payday,
+            dt.date(year, month, 25),
             f"Löner {year}-{month:02d}",
             [
                 ("7210", gross),
                 ("7510", fees),
                 ("7411", pension),
+                ("7533", pension_tax),
+                ("7290", holiday),
+                ("7519", holiday_fees),
                 ("2710", -tax),
                 ("2731", -fees),
+                ("2514", -pension_tax),
+                ("2920", -holiday),
+                ("2940", -holiday_fees),
                 ("1930", -(gross - tax + pension)),
             ],
         )
@@ -318,12 +409,19 @@ def _payroll(book: _Book) -> None:
                 f"Skattedeklaration löner {year}-{month:02d}",
                 [("2710", tax), ("2731", fees), ("1930", -(tax + fees))],
             )
+    book.add(
+        MANUAL,
+        dt.date(2025, 5, 12),
+        "Betalning särskild löneskatt 2024",
+        [("2514", pension_tax_2024), ("1930", -pension_tax_2024)],
+    )
 
 
-def _financing_and_depreciation(book: _Book) -> None:
+def _financing_depreciation_and_tax(book: _Book) -> None:
     rng = book.rng
     loan = -OPENING_2024["2350"]
     amortisation = Decimal("50000.00")
+    depreciation = Decimal("25000.00")
     for year, month in _months():
         interest = _round(loan * Decimal("0.055") / 12)
         book.add(
@@ -333,15 +431,21 @@ def _financing_and_depreciation(book: _Book) -> None:
             [("8410", interest), ("2350", amortisation), ("1930", -(interest + amortisation))],
         )
         loan -= amortisation
+        prepaid = PRELIMINARY_TAX[year]
+        book.add(
+            MANUAL,
+            dt.date(year, month, 12),
+            f"Preliminärskatt {year}-{month:02d}",
+            [("2518", prepaid), ("1930", -prepaid)],
+        )
         end = _month_end(year, month)
-        depreciation = Decimal("25000.00")
         book.add(
             MANUAL,
             end,
             f"Avskrivning inventarier {year}-{month:02d}",
             [("7832", depreciation), ("1229", -depreciation)],
         )
-        fee = _kr(rng.uniform(1200, 1900))
+        fee = rng.vary(Decimal("1550"), 20)
         book.add(MANUAL, end, f"Bankavgifter {year}-{month:02d}", [("6570", fee), ("1930", -fee)])
 
 
@@ -390,13 +494,14 @@ def _plant_anomalies(book: _Book) -> None:
             Decimal("45000.00"),
             anomaly=1,
         )
-        # Private car: half the VAT is deductible on leased cars.
+        # Leased passenger car: half the VAT is deductible, the rest is cost. A net fee of
+        # 7 111.11 gives exactly 8 000.00 on 5615.
         book.supplier_invoice(
             dt.date(year, month, 5),
             f"Leasing personbil {year}-{month:02d}",
             "5615",
-            Decimal("8000.00"),
-            vat_rate=VAT / 2,
+            Decimal("7111.11"),
+            deductible=Decimal("0.5"),
             anomaly=3,
         )
 
@@ -433,6 +538,77 @@ def _plant_anomalies(book: _Book) -> None:
     )
 
 
+def _vat(book: _Book) -> None:
+    """Monthly VAT return on the last day of the month, paid the 26th of the next month.
+
+    Must run after every draft that books 2611 or 2641.
+    """
+    for year, month in _months():
+        output = ZERO
+        deductible = ZERO
+        for d in book.drafts:
+            if (d.date.year, d.date.month) == (year, month):
+                for account, amount in d.lines:
+                    if account == "2611":
+                        output += amount
+                    elif account == "2641":
+                        deductible += amount
+        net = output + deductible  # raw signs: negative means VAT to pay
+        book.add(
+            MANUAL,
+            _month_end(year, month),
+            f"Momsredovisning {year}-{month:02d}",
+            [("2611", -output), ("2641", -deductible), ("2650", net)],
+        )
+        due = _next_month(year, month, 26)
+        if due <= LAST_DAY:
+            book.add(
+                MANUAL, due, f"Betalning moms {year}-{month:02d}", [("2650", -net), ("1930", net)]
+            )
+
+
+def _close_2024(book: _Book) -> None:
+    """Close 2024: tax, result to equity, then the 2025 AGM and dividend. 2025 stays open.
+
+    Must run last, after every draft dated 2024.
+    """
+    result = ZERO
+    for d in book.drafts:
+        if d.date.year == 2024:
+            result += sum((a for acc, a in d.lines if is_result_account(acc)), ZERO)
+    tax = (-result * CORPORATE_TAX).quantize(Decimal("1"), rounding=ROUND_DOWN).quantize(CENT)
+    prepaid = PRELIMINARY_TAX[2024] * 12
+    year_end = dt.date(2024, 12, 31)
+    book.add(
+        MANUAL,
+        year_end,
+        "Skatt 2024",
+        [("8910", tax), ("2512", -tax + prepaid), ("2518", -prepaid)],
+    )
+    profit = -(result + tax)
+    book.add(MANUAL, year_end, "Årets resultat 2024", [("8999", profit), ("2099", -profit)])
+
+    remaining = tax - prepaid  # positive: tax still to pay
+    book.add(
+        MANUAL,
+        dt.date(2025, 5, 12),
+        "Slutlig skatt 2024" if remaining >= 0 else "Återbetalning slutlig skatt 2024",
+        [("2512", remaining), ("1930", -remaining)],
+    )
+    book.add(
+        MANUAL,
+        dt.date(2025, 5, 15),
+        "Vinstdisposition enligt årsstämma 2025",
+        [("2099", profit), ("2091", -(profit - DIVIDEND_2025)), ("2898", -DIVIDEND_2025)],
+    )
+    book.add(
+        MANUAL,
+        dt.date(2025, 5, 28),
+        "Utbetalning utdelning",
+        [("2898", DIVIDEND_2025), ("1930", -DIVIDEND_2025)],
+    )
+
+
 def _facit(seed: int, ledger: Ledger, refs: dict[int, list[str]]) -> Facit:
     anomalies = []
     for spec in ANOMALIES:
@@ -461,55 +637,6 @@ def _facit(seed: int, ledger: Ledger, refs: dict[int, list[str]]) -> Facit:
     return Facit(seed=seed, anomalies=anomalies)
 
 
-def _vat(book: _Book) -> None:
-    """Monthly VAT return on the last day of the month, paid the 12th of the next month."""
-    for year, month in _months():
-        output = ZERO
-        deductible = ZERO
-        for d in book.drafts:
-            if (d.date.year, d.date.month) == (year, month):
-                for account, amount in d.lines:
-                    if account == "2611":
-                        output += amount
-                    elif account == "2641":
-                        deductible += amount
-        net = output + deductible  # raw signs: negative means VAT to pay
-        book.add(
-            MANUAL,
-            _month_end(year, month),
-            f"Momsredovisning {year}-{month:02d}",
-            [("2611", -output), ("2641", -deductible), ("2650", net)],
-        )
-        due = _next_month(year, month, 12)
-        if due <= LAST_DAY:
-            book.add(
-                MANUAL, due, f"Betalning moms {year}-{month:02d}", [("2650", -net), ("1930", net)]
-            )
-
-
-def _close_2024(book: _Book) -> None:
-    """Book 2024 tax and transfer the result to equity; 2025 is left open (before closing)."""
-    result = ZERO
-    for d in book.drafts:
-        if d.date.year == 2024:
-            result += sum((a for acc, a in d.lines if acc[0] in "345678"), ZERO)
-    tax = _round(-result * CORPORATE_TAX)
-    book.add(MANUAL, dt.date(2024, 12, 31), "Beräknad skatt 2024", [("8910", tax), ("2512", -tax)])
-    profit_after_tax = -(result + tax)
-    book.add(
-        MANUAL,
-        dt.date(2024, 12, 31),
-        "Årets resultat 2024",
-        [("8999", profit_after_tax), ("2099", -profit_after_tax)],
-    )
-    book.add(
-        MANUAL,
-        dt.date(2025, 5, 12),
-        "Betalning slutlig skatt 2024",
-        [("2512", tax), ("1930", -tax)],
-    )
-
-
 _ACCOUNT_TYPES: dict[str, AccountType] = {"1": "T", "2": "S", "3": "I"}
 
 
@@ -518,6 +645,7 @@ def _account_type(number: str) -> AccountType:
 
 
 def _assemble(drafts: list[_Draft]) -> tuple[Ledger, dict[int, list[str]]]:
+    """Number the drafts per series in date order and derive IB, UB and RES."""
     numbers: dict[str, int] = {}
     vouchers: list[Voucher] = []
     refs: dict[int, list[str]] = {}
@@ -549,14 +677,14 @@ def _assemble(drafts: list[_Draft]) -> tuple[Ledger, dict[int, list[str]]]:
                     moved[t.account] = moved.get(t.account, ZERO) + t.amount
         ub = dict(ib)
         for account, amount in moved.items():
-            if account[0] in "12":
+            if is_balance_account(account):
                 ub[account] = ub.get(account, ZERO) + amount
         opening += [Balance(year_index=index, account=a, amount=ib[a]) for a in sorted(ib)]
         closing += [Balance(year_index=index, account=a, amount=ub[a]) for a in sorted(ub)]
         results += [
             Balance(year_index=index, account=a, amount=moved[a])
             for a in sorted(moved)
-            if a[0] in "345678"
+            if is_result_account(a)
         ]
         ib = ub
 
@@ -583,15 +711,15 @@ def _assemble(drafts: list[_Draft]) -> tuple[Ledger, dict[int, list[str]]]:
 
 def build_demo_company(seed: int) -> tuple[Ledger, Facit]:
     """Build the demo ledger and its facit in memory. Same seed, same result."""
-    book = _Book(random.Random(seed))
+    book = _Book(_Rand(seed))
     _opening_settlements(book)
     _sales(book)
     _purchases(book)
     _payroll(book)
-    _financing_and_depreciation(book)
+    _financing_depreciation_and_tax(book)
     _plant_anomalies(book)
-    _vat(book)
-    _close_2024(book)
+    _vat(book)  # after everything that books VAT
+    _close_2024(book)  # last: needs the full 2024 result
     ledger, refs = _assemble(book.drafts)
     return ledger, _facit(seed, ledger, refs)
 
