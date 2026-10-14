@@ -124,6 +124,9 @@ class DDQuestion(BaseModel):
 class PlantedAnomaly(BaseModel):
     id: int
     category: FlagCategory
+    also_accepted: list[FlagCategory] = Field(
+        default_factory=list, description="other categories an evaluator should accept"
+    )
     description: str
     voucher_refs: list[str]
     accounts: list[str]
