@@ -14,17 +14,17 @@ Each milestone has a branch `m<N>-<slug>` and a PR. Criteria are checked off onl
 
 Branch `m1-sie`. Modules: `sie/parser.py`, `sie/generator.py`.
 
-- [ ] Parser reads `tests/fixtures/minimal.se` into a `Ledger` and matches every value in
+- [x] Parser reads `tests/fixtures/minimal.se` into a `Ledger` and matches every value in
       `tests/fixtures/minimal_expected.json`
-- [ ] Parser supports all tags in DOMAIN.md section 1, including optional `#TRANS` fields,
+- [x] Parser supports all tags in DOMAIN.md section 1, including optional `#TRANS` fields,
       quoted strings with escaped quotes, and CP437 encoding
-- [ ] Integrity check: for every balance account, IB + sum(TRANS) = UB; for every result
+- [x] Integrity check: for every balance account, IB + sum(TRANS) = UB; for every result
       account, sum(TRANS) = RES. Violations returned as a list, not raised
-- [ ] Generator builds a fictional service company: 24 months (2024 to 2025), about
+- [x] Generator builds a fictional service company: 24 months (2024 to 2025), about
       40 MSEK revenue, about 2 000 vouchers, deterministic for a given seed
-- [ ] Generator plants the anomalies in DOMAIN.md section 6 and writes
+- [x] Generator plants the anomalies in DOMAIN.md section 6 and writes
       `data/demo/facit.json` with voucher refs for each
-- [ ] Round trip: generated file parses with zero integrity violations
+- [x] Round trip: generated file parses with zero integrity violations
 
 ## M2 Analysis engine
 

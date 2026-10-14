@@ -13,9 +13,13 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------- ledger (sie/)
 
 
+AccountType = Literal["T", "S", "K", "I"]
+
+
 class Account(BaseModel):
     number: str
     name: str
+    type: AccountType | None = Field(default=None, description="#KTYP, optional")
 
 
 class FiscalYear(BaseModel):
@@ -30,11 +34,24 @@ class Balance(BaseModel):
     amount: Decimal
 
 
+class PeriodBalance(BaseModel):
+    year_index: int
+    period: str = Field(description="YYYYMM as in #PSALDO")
+    account: str
+    amount: Decimal
+    objects: list[tuple[str, str]] = Field(
+        default_factory=list, description="empty for the account total, else one dimension"
+    )
+
+
 class Transaction(BaseModel):
     account: str
     amount: Decimal
     date: dt.date | None = None
     text: str | None = None
+    objects: list[tuple[str, str]] = Field(
+        default_factory=list, description="(dimension, object) pairs from the {} list"
+    )
 
 
 class Voucher(BaseModel):
@@ -54,18 +71,29 @@ class Voucher(BaseModel):
 class Ledger(BaseModel):
     company_name: str
     org_nr: str
+    program: str | None = Field(default=None, description="#PROGRAM")
+    generated: dt.date | None = Field(default=None, description="#GEN")
+    chart_type: str | None = Field(default=None, description="#KPTYP")
     fiscal_years: list[FiscalYear]
     accounts: dict[str, Account]
     opening_balances: list[Balance] = Field(description="#IB")
     closing_balances: list[Balance] = Field(description="#UB")
     results: list[Balance] = Field(description="#RES")
+    period_balances: list[PeriodBalance] = Field(default_factory=list, description="#PSALDO")
     vouchers: list[Voucher]
     warnings: list[str] = Field(default_factory=list, description="unknown tags etc.")
 
 
 class IntegrityIssue(BaseModel):
-    kind: Literal["unbalanced_voucher", "ib_trans_ub_mismatch", "trans_res_mismatch"]
-    ref: str = Field(description="voucher ref or account number")
+    kind: Literal[
+        "unbalanced_voucher",
+        "ib_trans_ub_mismatch",
+        "trans_res_mismatch",
+        "ub_res_mismatch",
+        "voucher_outside_fiscal_year",
+        "unknown_account_class",
+    ]
+    ref: str = Field(description="voucher ref, account number or 'RAR <index>'")
     expected: Decimal
     actual: Decimal
 
@@ -106,6 +134,9 @@ class DDQuestion(BaseModel):
 class PlantedAnomaly(BaseModel):
     id: int
     category: FlagCategory
+    also_accepted: list[FlagCategory] = Field(
+        default_factory=list, description="other categories an evaluator should accept"
+    )
     description: str
     voucher_refs: list[str]
     accounts: list[str]

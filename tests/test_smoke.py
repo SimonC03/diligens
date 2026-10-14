@@ -58,3 +58,10 @@ def test_mcp_server_imports() -> None:
     from diligens.mcp_server import mcp
 
     assert mcp.name == "diligens"
+
+
+def test_cli_generate(tmp_path: Path) -> None:
+    out = tmp_path / "demo.se"
+    result = CliRunner().invoke(app, ["generate", "--out", str(out), "--seed", "7"])
+    assert result.exit_code == 0, result.output
+    assert out.exists() and (tmp_path / "facit.json").exists()
