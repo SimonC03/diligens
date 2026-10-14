@@ -1,5 +1,6 @@
 """M2 analysis tests. One test per acceptance criterion in docs/PLAN.md."""
 
+import ast
 import datetime as dt
 import json
 from decimal import ROUND_HALF_UP, Decimal
@@ -7,10 +8,21 @@ from pathlib import Path
 
 import pytest
 
+from diligens import analysis
 from diligens.analysis.kpis import compute_kpis
 from diligens.analysis.mapping import map_accounts
+from diligens.analysis.reconcile import reconcile
 from diligens.analysis.statements import monthly_statements
-from diligens.models import Account, KPIs, Ledger, StatementLine, Transaction, Voucher
+from diligens.models import (
+    Account,
+    Balance,
+    KPIs,
+    Ledger,
+    Reconciliation,
+    StatementLine,
+    Transaction,
+    Voucher,
+)
 from diligens.sie.generator import build_demo_company
 from diligens.sie.parser import parse_sie
 
@@ -236,3 +248,83 @@ def test_net_debt_items(minimal: Ledger, demo: Ledger) -> None:
     assert demo_items["beraknad_skatt"].amount == (ebt_2025 * Decimal("0.206")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+
+
+def _reconcile(ledger: Ledger) -> Reconciliation:
+    return reconcile(ledger, monthly_statements(ledger, map_accounts(ledger)))
+
+
+def test_reconciliation_demo_is_zero(minimal: Ledger, demo: Ledger) -> None:
+    for ledger in (minimal, demo):
+        rec = _reconcile(ledger)
+        assert rec.ok and rec.total_difference == 0
+    rec = _reconcile(demo)
+    assert {(r.year_index, r.against) for r in rec.rows} == {
+        (-1, "RES"),
+        (-1, "UB"),
+        (0, "RES"),
+        (0, "UB"),
+    }
+    assert any(r.account == "3041" and r.against == "RES" for r in rec.rows)
+
+    def bump(balances: list[Balance], account: str) -> list[Balance]:
+        return [
+            b.model_copy(update={"amount": b.amount + 1})
+            if (b.year_index, b.account) == (0, account)
+            else b
+            for b in balances
+        ]
+
+    tampered = demo.model_copy(
+        update={
+            "closing_balances": bump(demo.closing_balances, "1930"),
+            "results": bump(demo.results, "6540"),
+        }
+    )
+    off = [(r.against, r.account, r.difference) for r in _reconcile(tampered).rows if r.difference]
+    assert sorted(off) == [("RES", "6540", Decimal("-1")), ("UB", "1930", Decimal("-1"))]
+
+    stray = _with_vouchers(minimal, ("1930", "9999", "100"))
+    rec = _reconcile(stray)
+    assert rec.unmapped_accounts == ["9999"] and not rec.ok
+
+
+FORBIDDEN_MODULES = {
+    "anthropic",
+    "httpx",
+    "io",
+    "openpyxl",
+    "os",
+    "pathlib",
+    "requests",
+    "shutil",
+    "socket",
+    "subprocess",
+    "urllib",
+}
+FORBIDDEN_CALLS = {"open", "print", "input", "eval", "exec"}
+
+
+def test_analysis_is_pure(minimal: Ledger) -> None:
+    package = Path(analysis.__file__).parent
+    for source in sorted(package.glob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                names = []
+            for name in names:
+                assert name.split(".")[0] not in FORBIDDEN_MODULES, (source.name, name)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                assert node.func.id not in FORBIDDEN_CALLS, (source.name, node.func.id)
+
+    before = minimal.model_dump()
+    mapping = map_accounts(minimal)
+    statements = monthly_statements(minimal, mapping)
+    first = (compute_kpis(statements), reconcile(minimal, statements))
+    second = (compute_kpis(statements), reconcile(minimal, statements))
+    assert minimal.model_dump() == before
+    assert first == second

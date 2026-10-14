@@ -17,7 +17,7 @@ def month_key(date: dt.date) -> str:
     return f"{date.year}-{date.month:02d}"
 
 
-def _months_of(year: FiscalYear) -> list[str]:
+def months_of(year: FiscalYear) -> list[str]:
     months: list[str] = []
     y, m = year.start.year, year.start.month
     while (y, m) <= (year.end.year, year.end.month):
@@ -40,7 +40,7 @@ def monthly_statements(ledger: Ledger, mapping: Mapping) -> Statements:
         ),
         key=lambda fy: fy.start,
     )
-    months_by_year = {fy.index: _months_of(fy) for fy in years}
+    months_by_year = {fy.index: months_of(fy) for fy in years}
     months = [m for fy in years for m in months_by_year[fy.index]]
     covered = set(months)
 
