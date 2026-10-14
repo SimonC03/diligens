@@ -31,3 +31,14 @@ Format: `YYYY-MM-DD` decision, reason.
   `also_accepted`. Reason: DOMAIN.md gives two categories; the eval should accept either.
 - 2026-10-14 The demo company uses 5615, 3990 and 6550 only in planted anomalies. Reason:
   "exactly these" anomalies; normal consulting costs go to 4600 and 6530/6540.
+- 2026-10-14 Demo VAT is filed monthly and paid the 26th of the next month (turnover above
+  40 MSEK); payroll taxes the 12th. Jan and Aug deadline exceptions are ignored.
+- 2026-10-14 2025 is open in the demo file: preliminary tax is paid to 2518 but no 2025 tax
+  expense is booked. Reason: realistic before closing. M2 must treat the accrued 2025 tax as
+  a debt like item, otherwise net debt is understated by about 1.1 MSEK.
+- 2026-10-14 Demo särskild löneskatt is accrued monthly on 2514 and paid once a year in May;
+  prepaid costs (17xx) are not modelled. Reason: enough to give NWC realistic accruals.
+- 2026-10-14 Office move furniture (110 TSEK on 5410) stays expensed as DOMAIN.md says, though
+  an advisor would normally call it capex. Reason: it is part of the planted one off item.
+- 2026-10-14 The generator draws only via `random.Random.random()` and builds integers itself.
+  Reason: Python guarantees reproducible `random()` across versions, not `randint`.
