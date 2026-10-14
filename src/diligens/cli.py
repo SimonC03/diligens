@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from diligens import __version__
+from diligens.sie.generator import generate_demo_company
 
 app = typer.Typer(
     help="Diligens: SIE4 bokföring till Financial Due Diligence underlag.",
@@ -32,7 +33,9 @@ def generate(
     seed: Annotated[int, typer.Option(help="Slumpfrö, samma frö ger samma bolag.")] = 42,
 ) -> None:
     """Skapa ett syntetiskt demobolag med planterade avvikelser (M1)."""
-    _not_ready("M1")
+    facit = generate_demo_company(seed, out)
+    typer.echo(f"Skrev {out}")
+    typer.echo(f"Skrev {out.parent / 'facit.json'} med {len(facit.anomalies)} avvikelser")
 
 
 @app.command()
