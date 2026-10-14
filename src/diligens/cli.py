@@ -49,9 +49,14 @@ def analyze(
 
 @app.command()
 def screen(
-    sni: Annotated[str, typer.Option(help="SNI kod, t.ex. 43210.")],
-    size: Annotated[str, typer.Option(help="Storleksklass anställda, t.ex. 5-49.")] = "5-49",
-    county: Annotated[str | None, typer.Option(help="Länskod, valfri.")] = None,
+    sni: Annotated[list[str], typer.Option(help="SNI kod, kan anges flera gånger.")],
+    oms_kl: Annotated[
+        list[int] | None, typer.Option(help="Omsättningsklass enligt SCB:s kodtabell.")
+    ] = None,
+    anst_kl: Annotated[
+        list[int] | None, typer.Option(help="Anställdaklass enligt SCB:s kodtabell.")
+    ] = None,
+    lan: Annotated[list[str] | None, typer.Option(help="Länskod för säte, valfri.")] = None,
     out: Annotated[Path, typer.Option(help="Mapp för long list.")] = Path("output"),
 ) -> None:
     """Screena förvärvskandidater via SCB och Bolagsverket (M6)."""
