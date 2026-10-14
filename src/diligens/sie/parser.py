@@ -286,5 +286,68 @@ def _voucher(header: list[Token], transactions: list[Transaction], line_no: int)
 
 
 def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
-    """Return every integrity violation from DOMAIN.md section 1. Never raises."""
-    raise NotImplementedError("M1: check_integrity")
+    """Return every integrity violation from DOMAIN.md section 1. Never raises.
+
+    `expected` is what the file states (0.00 for a voucher, #UB or #RES for an account) and
+    `actual` is what the transactions add up to. Transactions belong to the fiscal year that
+    contains the voucher date. Missing #IB, #UB or #RES count as 0.00, since exporters often
+    leave out zero balances. Fiscal years without vouchers are skipped: a standard export
+    carries the prior year's balances but not its vouchers.
+    """
+    zero = Decimal("0")
+    issues: list[IntegrityIssue] = []
+
+    for voucher in ledger.vouchers:
+        total = sum((t.amount for t in voucher.transactions), zero)
+        if total != zero:
+            issues.append(
+                IntegrityIssue(
+                    kind="unbalanced_voucher", ref=voucher.ref, expected=zero, actual=total
+                )
+            )
+
+    for year in ledger.fiscal_years:
+        trans_sum: dict[str, Decimal] = {}
+        for voucher in ledger.vouchers:
+            if year.start <= voucher.date <= year.end:
+                for t in voucher.transactions:
+                    trans_sum[t.account] = trans_sum.get(t.account, zero) + t.amount
+        if not trans_sum:
+            continue
+
+        ib = _by_account(ledger.opening_balances, year.index)
+        ub = _by_account(ledger.closing_balances, year.index)
+        res = _by_account(ledger.results, year.index)
+
+        for account in sorted(trans_sum.keys() | ib.keys() | ub.keys() | res.keys()):
+            moved = trans_sum.get(account, zero)
+            if _is_balance_account(account):
+                actual = ib.get(account, zero) + moved
+                stated = ub.get(account, zero)
+                if actual != stated:
+                    issues.append(
+                        IntegrityIssue(
+                            kind="ib_trans_ub_mismatch", ref=account, expected=stated, actual=actual
+                        )
+                    )
+            elif _is_result_account(account):
+                stated = res.get(account, zero)
+                if moved != stated:
+                    issues.append(
+                        IntegrityIssue(
+                            kind="trans_res_mismatch", ref=account, expected=stated, actual=moved
+                        )
+                    )
+    return issues
+
+
+def _by_account(balances: list[Balance], year_index: int) -> dict[str, Decimal]:
+    return {b.account: b.amount for b in balances if b.year_index == year_index}
+
+
+def _is_balance_account(account: str) -> bool:
+    return account[:1] in {"1", "2"}
+
+
+def _is_result_account(account: str) -> bool:
+    return account[:1] in {"3", "4", "5", "6", "7", "8"}

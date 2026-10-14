@@ -8,7 +8,8 @@ from typing import Any
 
 import pytest
 
-from diligens.sie.parser import parse_sie
+from diligens.models import Balance, FiscalYear
+from diligens.sie.parser import check_integrity, parse_sie
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -135,3 +136,52 @@ def test_parser_supports_all_domain_tags(tmp_path: Path) -> None:
     wrong_type = _write_cp437(tmp_path / "typ3.se", ALL_TAGS_SIE.replace("#SIETYP 4", "#SIETYP 3"))
     with pytest.raises(ValueError, match="SIE typ 3"):
         parse_sie(wrong_type)
+
+
+def test_integrity_check_returns_violations() -> None:
+    ledger = parse_sie(FIXTURES / "minimal.se")
+    assert check_integrity(ledger) == []
+
+    # A standard export carries prior year balances without its vouchers; not a violation.
+    prior_year = FiscalYear(index=-1, start=dt.date(2024, 1, 1), end=dt.date(2024, 12, 31))
+    with_prior = ledger.model_copy(
+        update={
+            "fiscal_years": [*ledger.fiscal_years, prior_year],
+            "closing_balances": [
+                *ledger.closing_balances,
+                Balance(year_index=-1, account="1930", amount=Decimal("100000.00")),
+            ],
+        }
+    )
+    assert check_integrity(with_prior) == []
+
+    def replace_balance(balances: list[Balance], account: str, amount: str) -> list[Balance]:
+        return [
+            b.model_copy(update={"amount": Decimal(amount)}) if b.account == account else b
+            for b in balances
+        ]
+
+    # B1: 5010 20000 -> 20100 unbalances the voucher; RES 5010 follows so only the voucher fails.
+    vouchers = []
+    for v in ledger.vouchers:
+        if v.ref == "B1":
+            first = v.transactions[0].model_copy(update={"amount": Decimal("20100.00")})
+            v = v.model_copy(update={"transactions": [first, *v.transactions[1:]]})
+        vouchers.append(v)
+    broken = ledger.model_copy(
+        update={
+            "vouchers": vouchers,
+            "closing_balances": replace_balance(ledger.closing_balances, "1930", "145001.00"),
+            "results": replace_balance(
+                replace_balance(ledger.results, "5010", "20100.00"), "6550", "41000.00"
+            ),
+        }
+    )
+
+    issues = check_integrity(broken)
+
+    assert sorted((i.kind, i.ref, i.expected, i.actual) for i in issues) == [
+        ("ib_trans_ub_mismatch", "1930", Decimal("145001.00"), Decimal("145000.00")),
+        ("trans_res_mismatch", "6550", Decimal("41000.00"), Decimal("40000.00")),
+        ("unbalanced_voucher", "B1", Decimal("0"), Decimal("100.00")),
+    ]
