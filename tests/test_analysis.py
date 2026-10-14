@@ -1,9 +1,14 @@
 """M2 analysis tests. One test per acceptance criterion in docs/PLAN.md."""
 
+from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from diligens.analysis.mapping import map_accounts
-from diligens.models import Account
+from diligens.analysis.statements import monthly_statements
+from diligens.models import Account, Ledger, StatementLine
+from diligens.sie.generator import build_demo_company
 from diligens.sie.parser import parse_sie
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -62,3 +67,49 @@ def test_bas_mapping_returns_unmapped() -> None:
     # Accounts only seen in transactions are mapped too.
     assert "3041" in mapped.accounts
     assert mapped.unmapped == ["0100", "9999", "ABC"]
+
+
+@pytest.fixture(scope="module")
+def minimal() -> Ledger:
+    return parse_sie(FIXTURES / "minimal.se")
+
+
+@pytest.fixture(scope="module")
+def demo() -> Ledger:
+    ledger, _ = build_demo_company(42)
+    return ledger
+
+
+def _line(lines: list[StatementLine], name: str) -> StatementLine:
+    return next(line for line in lines if line.line == name)
+
+
+def test_monthly_statements(minimal: Ledger, demo: Ledger) -> None:
+    st = monthly_statements(minimal, map_accounts(minimal))
+
+    assert st.months == [f"2025-{m:02d}" for m in range(1, 13)]
+    revenue = _line(st.income, "Nettoomsättning")
+    assert revenue.values["2025-01"] == Decimal("-100000.00")
+    assert revenue.values["2025-02"] == 0
+    assert revenue.accounts == ["3041"] and "3000–3699" in revenue.source_ref
+    external = _line(st.income, "Övriga externa kostnader")
+    assert (external.values["2025-02"], external.values["2025-03"]) == (20000, 40000)
+    assert _line(st.income, "Personalkostnader").values["2025-03"] == 30000
+    assert st.account_movements["3041"]["2025-01"] == Decimal("-100000.00")
+
+    cash = _line(st.balance, "Kassa och bank")
+    assert [cash.values[m] for m in ("2025-01", "2025-03", "2025-12")] == [225000, 145000, 145000]
+    assert _line(st.balance, "Kundfordringar").values["2025-01"] == 0
+    assert _line(st.balance, "Moms och punktskatter").values["2025-03"] == Decimal("-10000.00")
+    assert _line(st.balance, "Årets resultat (beräknat)").values["2025-03"] == -10000
+    assert st.account_balances["1930"]["2025-03"] == Decimal("145000.00")
+
+    # BR plus the computed result balances every month, also across two fiscal years.
+    for ledger in (minimal, demo):
+        statements = monthly_statements(ledger, map_accounts(ledger))
+        for month in statements.months:
+            assert sum(line.values[month] for line in statements.balance) == 0, month
+    demo_st = monthly_statements(demo, map_accounts(demo))
+    assert len(demo_st.months) == 24 and demo_st.months[0] == "2024-01"
+    # The 2024 result is closed to equity, so the computed result restarts in 2025.
+    assert _line(demo_st.balance, "Årets resultat (beräknat)").values["2024-12"] == 0
