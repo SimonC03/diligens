@@ -42,3 +42,18 @@ Format: `YYYY-MM-DD` decision, reason.
   an advisor would normally call it capex. Reason: it is part of the planted one off item.
 - 2026-10-14 The generator draws only via `random.Random.random()` and builds integers itself.
   Reason: Python guarantees reproducible `random()` across versions, not `randint`.
+- 2026-10-14 DOMAIN.md section 5 extended with explicit BAS lists: interest bearing debt
+  adds 2330 to 2349 and 2840; group, related party and dividend debts (2360 to 2399, 2860
+  to 2869, 2893, 2898) leave NWC and are listed as debt like items to assess. 2200 to 2329
+  are listed the same way so no balance is silently dropped. Reason: owner and group loans
+  must not inflate working capital; the advisor decides whether they are debt.
+- 2026-10-14 An open fiscal year gets an estimated tax line in net debt (20.6 % of result
+  before tax so far, minus booked tax). A year counts as open when its result accounts do
+  not sum to zero, i.e. no closing to 8999. Reason: otherwise prepaid F-skatt on 2518
+  lowers net debt while the matching tax expense is missing.
+- 2026-10-14 Statements cover every month of the fiscal years that have vouchers; months
+  without transactions are 0. Each year's balance sheet starts from its own #IB. A computed
+  line "Årets resultat (beräknat)" makes the balance sheet sum to zero before closing.
+- 2026-10-14 KPI values follow DOMAIN.md signs (revenue, costs and EBITDA positive) while
+  statements keep raw SIE signs. LTM needs 12 months and growth needs 24; otherwise None.
+  Ratios are unrounded Decimals; rounding happens at export.
