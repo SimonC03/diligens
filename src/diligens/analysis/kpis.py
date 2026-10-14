@@ -38,9 +38,13 @@ _LINE_KPIS: tuple[tuple[str, str, str, int], ...] = (
 )
 
 # Working capital (DOMAIN.md section 5): account ranges included, and accounts within them
-# that are financing rather than operations.
+# that are tax or financing rather than operations, on both the asset and liability side.
 _NWC_RANGES = ((1400, 1799), (2400, 2499), (2600, 2999))
 _NWC_EXCLUDED_RANGES = (
+    (1630, 1649),
+    (1660, 1669),
+    (1682, 1682),
+    (1685, 1685),
     (2410, 2410),
     (2417, 2417),
     (2840, 2840),
@@ -56,13 +60,15 @@ _NET_DEBT: tuple[tuple[NetDebtKind, str, tuple[tuple[int, int], ...]], ...] = (
         "Räntebärande skulder",
         ((2330, 2359), (2410, 2410), (2417, 2417), (2840, 2840)),
     ),
-    ("skatt", "Skatteskulder", ((2500, 2599),)),
+    ("skatt", "Skatteskulder och skattekonto", ((1630, 1649), (2500, 2599))),
     ("kassa", "Kassa och bank", ((1900, 1999),)),
     ("placeringar", "Kortfristiga placeringar", ((1800, 1899),)),
 )
 
-# Debt like items left out of both NWC and net debt, for the advisor to assess.
+# Debt and cash like items left out of both NWC and net debt, for the advisor to assess.
 _DEBT_LIKE: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
+    ("Fordringar på koncernföretag", ((1660, 1669),)),
+    ("Lånefordringar och fordringar på delägare eller närstående", ((1682, 1682), (1685, 1685))),
     ("Avsättningar", ((2200, 2299),)),
     ("Obligations- och konvertibla lån", ((2300, 2329),)),
     ("Långfristiga skulder till koncern och närstående", ((2360, 2399),)),

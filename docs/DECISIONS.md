@@ -69,3 +69,9 @@ Format: `YYYY-MM-DD` decision, reason.
 - 2026-10-14 KPI values follow DOMAIN.md signs (revenue, costs and EBITDA positive) while
   statements keep raw SIE signs. LTM needs 12 months and growth needs 24; otherwise None.
   Ratios are unrounded Decimals; rounding happens at export.
+- 2026-10-14 NWC is symmetric: the receivable side of financing leaves NWC too. Group
+  receivables (1660 to 1669), loan receivables (1682) and receivables from owners or
+  related parties (1685) are listed for assessment; the tax account and tax receivables
+  (1630 to 1649) move to net debt next to 2500 to 2599. The rest of 1680 to 1689 (e.g.
+  1684, 1689) stays in NWC as operating items. Reason: a loan to the owner must not
+  inflate working capital, mirroring 2893 on the liability side.

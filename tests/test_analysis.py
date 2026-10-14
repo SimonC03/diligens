@@ -271,8 +271,9 @@ def test_nwc_monthly_and_normal_level(minimal: Ledger, demo: Ledger) -> None:
     assert demo_kpis.nwc_normal.value == sum(last_12) / 12
     assert "12" in demo_kpis.nwc_normal.source_ref
 
-    # Bank overdraft (2417), short term loan (2840), owner loan (2893) and an unpaid
-    # dividend (2898) are financing, not working capital.
+    # Financing on both sides is not working capital: bank overdraft (2417), short term
+    # loan (2840), owner loan (2893), unpaid dividend (2898), tax account (1630), group
+    # receivable (1661), loan receivable (1682) and a loan to the owner (1685).
     financed = _kpis(
         _with_vouchers(
             minimal,
@@ -280,6 +281,10 @@ def test_nwc_monthly_and_normal_level(minimal: Ledger, demo: Ledger) -> None:
             ("1930", "2840", "30000"),
             ("1930", "2893", "20000"),
             ("2091", "2898", "15000"),
+            ("1630", "1930", "12000"),
+            ("1661", "1930", "9000"),
+            ("1682", "1930", "7000"),
+            ("1685", "1930", "40000"),
         )
     )
     assert [financed.nwc.values[m] for m in kpis.months] == [nwc[m] for m in kpis.months]
@@ -318,6 +323,26 @@ def test_net_debt_items(minimal: Ledger, demo: Ledger) -> None:
     ]
     # Owner loan is listed for assessment, not added to net debt; the cash it brought is.
     assert financed.net_debt == kpis.net_debt + Decimal("80000") - Decimal("100000")
+
+    # Receivables mirror the debts: the tax account sits with the tax debts in net debt,
+    # group, loan and owner receivables are listed for assessment.
+    lent = _kpis(
+        _with_vouchers(
+            minimal,
+            ("1630", "1930", "12000"),
+            ("1661", "1930", "9000"),
+            ("1682", "1930", "7000"),
+            ("1685", "1930", "40000"),
+        )
+    )
+    tax = next(i for i in lent.net_debt_items if i.kind == "skatt")
+    assert tax.accounts == ["1630"] and tax.amount == Decimal("-12000.00")
+    assert [(i.accounts, i.amount) for i in lent.debt_like_items] == [
+        (["1661"], Decimal("-9000.00")),
+        (["1682", "1685"], Decimal("-47000.00")),
+    ]
+    # Only the cash leaving (68 000) and the tax account (-12 000) move net debt.
+    assert lent.net_debt == kpis.net_debt + Decimal("68000") - Decimal("12000")
 
     # Tax already booked on 8910 means the company has taken a view: no estimate.
     taxed = _kpis(_with_vouchers(minimal, ("8910", "2512", "1000")))
