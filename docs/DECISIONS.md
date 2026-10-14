@@ -37,7 +37,8 @@ Format: `YYYY-MM-DD` decision, reason.
   expense is booked. Reason: realistic before closing. M2 must treat the accrued 2025 tax as
   a debt like item, otherwise net debt is understated by about 1.1 MSEK.
 - 2026-10-14 Demo särskild löneskatt is accrued monthly on 2514 and paid once a year in May;
-  prepaid costs (17xx) are not modelled. Reason: enough to give NWC realistic accruals.
+  prepaid costs (17xx) are not modelled. 2514 sits in 2500 to 2599, so it lands in net debt
+  as a tax item, not in NWC; the holiday pay accrual (2920, 2940) gives NWC its accruals.
 - 2026-10-14 Office move furniture (110 TSEK on 5410) stays expensed as DOMAIN.md says, though
   an advisor would normally call it capex. Reason: it is part of the planted one off item.
 - 2026-10-14 The generator draws only via `random.Random.random()` and builds integers itself.
@@ -47,13 +48,24 @@ Format: `YYYY-MM-DD` decision, reason.
   to 2869, 2893, 2898) leave NWC and are listed as debt like items to assess. 2200 to 2329
   are listed the same way so no balance is silently dropped. Reason: owner and group loans
   must not inflate working capital; the advisor decides whether they are debt.
-- 2026-10-14 An open fiscal year gets an estimated tax line in net debt (20.6 % of result
-  before tax so far, minus booked tax). A year counts as open when its result accounts do
-  not sum to zero, i.e. no closing to 8999. Reason: otherwise prepaid F-skatt on 2518
-  lowers net debt while the matching tax expense is missing.
-- 2026-10-14 Statements cover every month of the fiscal years that have vouchers; months
+- 2026-10-14 Every open fiscal year gets its own estimated tax line in net debt (20.6 % of
+  result before tax so far, floor zero), also a prior year not yet closed. A year is open
+  when its result accounts do not sum to zero (no closing to 8999) and no tax is booked on
+  8900 to 8989. Reason: otherwise prepaid F-skatt on 2518 lowers net debt while the tax
+  expense is missing; booked tax means the company has taken a view (e.g. a loss carry
+  forward) that an estimate must not override.
+- 2026-10-14 Statements cover every fiscal year from the first to the last one with
+  vouchers (a middle year without vouchers stays in, so months are contiguous) and stop at
+  the last month with vouchers. Reason: an export taken mid year must not show empty
+  trailing months, and LTM, NWC normal level and net debt use that last month. Months
   without transactions are 0. Each year's balance sheet starts from its own #IB. A computed
   line "Årets resultat (beräknat)" makes the balance sheet sum to zero before closing.
+- 2026-10-14 KPIs include year to date series per fiscal year next to monthly and LTM.
+  Reason: an export with fewer than 12 months has no LTM, and advisors compare YTD.
+- 2026-10-14 Reconciliation is `ok` only when it has rows, every difference is 0.00, no
+  account is unmapped and no voucher falls outside the fiscal years. Callers (CLI, MCP)
+  must treat `ok == False` as a failure. #IB of a year is not compared with #UB of the
+  year before, since closing via #IB legitimately moves the result between 2099 and 2091.
 - 2026-10-14 KPI values follow DOMAIN.md signs (revenue, costs and EBITDA positive) while
   statements keep raw SIE signs. LTM needs 12 months and growth needs 24; otherwise None.
   Ratios are unrounded Decimals; rounding happens at export.

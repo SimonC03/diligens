@@ -4,9 +4,9 @@ KPI values follow the DOMAIN.md definitions (revenue, costs and EBITDA positive)
 items are positive when they increase net debt.
 """
 
-import datetime as dt
 from decimal import ROUND_HALF_UP, Decimal
 
+from diligens.analysis.statements import months_of
 from diligens.models import (
     Figure,
     FiscalYear,
@@ -142,27 +142,54 @@ def _with_margins(series: dict[str, KpiSeries], months: list[str]) -> dict[str, 
     return series
 
 
+def _month_index(month: str) -> int:
+    return int(month[:4]) * 12 + int(month[5:]) - 1
+
+
 def _ltm(monthly: dict[str, KpiSeries], months: list[str]) -> dict[str, KpiSeries]:
+    """Rolling 12 calendar months; None unless all 12 months are in the data."""
+    position = {m: _month_index(m) for m in months}
     ltm: dict[str, KpiSeries] = {}
     for key, s in monthly.items():
         values: dict[str, Decimal | None] = {}
         for i, m in enumerate(months):
-            window = [s.values[x] for x in months[i - 11 : i + 1]] if i >= 11 else []
-            values[m] = sum((v or ZERO for v in window), ZERO) if window else None
+            full = i >= 11 and position[m] - position[months[i - 11]] == 11
+            window = months[i - 11 : i + 1] if full else []
+            values[m] = sum((s.values[x] or ZERO for x in window), ZERO) if window else None
         ltm[key] = KpiSeries(
             name=f"{s.name} LTM", values=values, source_ref=f"Summa senaste 12 mån: {s.name}"
         )
     ltm = _with_margins(ltm, months)
     revenue = ltm["nettoomsattning"].values
+    growth: dict[str, Decimal | None] = {}
+    for i, m in enumerate(months):
+        previous = months[i - 12] if i >= 12 else None
+        same_month = previous is not None and position[m] - position[previous] == 12
+        growth[m] = _growth(revenue[m], revenue[previous]) if same_month and previous else None
     ltm["tillvaxt"] = KpiSeries(
         name="Tillväxt LTM",
-        values={
-            m: _growth(revenue[m], revenue[months[i - 12]]) if i >= 23 else None
-            for i, m in enumerate(months)
-        },
+        values=growth,
         source_ref="Nettoomsättning LTM jämfört med LTM 12 månader tidigare, minus 1",
     )
     return ltm
+
+
+def _ytd(monthly: dict[str, KpiSeries], statements: Statements) -> dict[str, KpiSeries]:
+    """Cumulative within each fiscal year, for year to date and full year comparisons."""
+    ytd: dict[str, KpiSeries] = {}
+    for key, s in monthly.items():
+        values: dict[str, Decimal | None] = {}
+        for year in statements.fiscal_years:
+            running = ZERO
+            for m in _year_months(statements, year):
+                running += s.values[m] or ZERO
+                values[m] = running
+        ytd[key] = KpiSeries(
+            name=f"{s.name} hittills i år",
+            values=values,
+            source_ref=f"Summa från räkenskapsårets början: {s.name}",
+        )
+    return _with_margins(ytd, statements.months)
 
 
 def _growth(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
@@ -199,62 +226,65 @@ def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:
     return KpiSeries(name="Rörelsekapital", values=values, source_ref=ref), normal
 
 
-def _estimated_tax(statements: Statements, month: str, tax_rate: Decimal) -> NetDebtItem | None:
-    """Tax on this year's profit so far when the year is still open (no closing to 8999)."""
-    year = next(fy for fy in statements.fiscal_years if _contains(fy, month))
-    year_months = [m for m in statements.months if _contains(year, m)]
-    full_year = sum(
-        (
-            statements.account_movements[a][m]
-            for a in statements.account_movements
-            for m in year_months
-        ),
-        ZERO,
-    )
-    if full_year == 0:
-        return None  # closed: result booked to equity, tax already on 25xx
-    so_far = [m for m in year_months if m <= month]
-    pre_tax = -sum(
-        (
-            statements.account_movements[a][m]
-            for a in statements.account_movements
-            if int(a) < 8900
-            for m in so_far
-        ),
-        ZERO,
-    )
-    booked = sum(
-        (
-            statements.account_movements[a][m]
-            for a in statements.account_movements
-            if 8900 <= int(a) <= 8989
-            for m in so_far
-        ),
-        ZERO,
-    )
-    amount = max(ZERO, (pre_tax * tax_rate).quantize(CENT, rounding=ROUND_HALF_UP) - booked)
-    return NetDebtItem(
-        label="Beräknad skatt innevarande år (ej bokförd)",
-        kind="beraknad_skatt",
-        accounts=[],
-        amount=amount,
-        source_ref=(
-            f"{tax_rate * 100:.1f} % av resultat före skatt {so_far[0]} till {month} "
-            "(konton 3000–8899), minus bokförd skatt 8900–8989. Antagande, året är inte bokslutat."
-        ),
-    )
+def _year_months(statements: Statements, year: FiscalYear) -> list[str]:
+    in_year = set(months_of(year))
+    return [m for m in statements.months if m in in_year]
 
 
-def _contains(year: FiscalYear, month: str) -> bool:
-    return year.start <= dt.date(int(month[:4]), int(month[5:]), 1) <= year.end
+def _year_label(year: FiscalYear) -> str:
+    if year.start.year == year.end.year:
+        return str(year.start.year)
+    return f"{year.start.year}/{year.end.year % 100:02d}"
+
+
+def _estimated_taxes(statements: Statements, tax_rate: Decimal) -> list[NetDebtItem]:
+    """One line per open fiscal year: tax on its result so far, not yet booked.
+
+    A year is open when its result accounts do not sum to zero (no closing to 8999) and no
+    tax is booked on 8900 to 8989. Booked tax means the company has taken a view, e.g. a
+    loss carry forward, which an estimate must not override.
+    """
+    items: list[NetDebtItem] = []
+    movements = statements.account_movements
+    for year in statements.fiscal_years:
+        months = _year_months(statements, year)
+        if not months:
+            continue
+
+        def total(accounts: list[str], months: list[str] = months) -> Decimal:
+            return sum((movements[a][m] for a in accounts for m in months), ZERO)
+
+        tax_accounts = [a for a in movements if 8900 <= int(a) <= 8989]
+        closed = total(list(movements)) == 0
+        tax_booked = any(movements[a][m] != 0 for a in tax_accounts for m in months)
+        if closed or tax_booked:
+            continue
+        pre_tax = -total([a for a in movements if int(a) < 8900])
+        amount = max(ZERO, (pre_tax * tax_rate).quantize(CENT, rounding=ROUND_HALF_UP))
+        items.append(
+            NetDebtItem(
+                label=f"Beräknad skatt {_year_label(year)} (ej bokförd)",
+                kind="beraknad_skatt",
+                accounts=[],
+                amount=amount,
+                source_ref=(
+                    f"{tax_rate * 100:.1f} % av resultat före skatt {months[0]} till "
+                    f"{months[-1]} (konton 3000–8899). Antagande: året är inte bokslutat "
+                    "och ingen skatt är bokförd på 8900–8989."
+                ),
+            )
+        )
+    return items
 
 
 def compute_kpis(statements: Statements, tax_rate: Decimal = CORPORATE_TAX_RATE) -> KPIs:
     months = statements.months
-    monthly = _with_margins(_amount_series(statements), months)
-    ltm = _ltm(
-        {k: v for k, v in monthly.items() if k not in ("bruttomarginal", "ebitda_marginal")}, months
-    )
+    if not months:
+        raise ValueError("Inga verifikationer inom räkenskapsåren, nyckeltal kan inte beräknas.")
+    amounts = _amount_series(statements)
+    monthly = _with_margins(dict(amounts), months)
+    ltm = _ltm(amounts, months)
+    ytd = _ytd(amounts, statements)
     nwc, nwc_normal = _nwc(statements)
 
     month = months[-1]
@@ -270,9 +300,7 @@ def compute_kpis(statements: Statements, tax_rate: Decimal = CORPORATE_TAX_RATE)
                 source_ref=f"SIE saldo {month}, konton {_ranges_text(ranges)}",
             )
         )
-    estimated = _estimated_tax(statements, month, tax_rate)
-    if estimated is not None:
-        items.append(estimated)
+    items += _estimated_taxes(statements, tax_rate)
 
     debt_like: list[NetDebtItem] = []
     for label, ranges in _DEBT_LIKE:
@@ -292,6 +320,7 @@ def compute_kpis(statements: Statements, tax_rate: Decimal = CORPORATE_TAX_RATE)
         months=months,
         monthly=monthly,
         ltm=ltm,
+        ytd=ytd,
         nwc=nwc,
         nwc_normal=nwc_normal,
         net_debt_month=month,

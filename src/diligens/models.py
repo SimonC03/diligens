@@ -8,7 +8,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # ---------------------------------------------------------------- ledger (sie/)
 
@@ -171,6 +171,7 @@ class KPIs(BaseModel):
     months: list[str]
     monthly: dict[str, KpiSeries] = Field(description="amounts and margins per month")
     ltm: dict[str, KpiSeries] = Field(description="rolling 12 months, None before month 12")
+    ytd: dict[str, KpiSeries] = Field(description="cumulative within each fiscal year")
     nwc: KpiSeries = Field(description="month end NWC, assets minus liabilities")
     nwc_normal: Figure = Field(description="average of the last 12 month end values")
     net_debt_month: str
@@ -188,6 +189,7 @@ class ReconciliationRow(BaseModel):
     computed: Decimal = Field(description="from the monthly statements")
     stated: Decimal = Field(description="from the SIE file, 0.00 if missing")
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def difference(self) -> Decimal:
         return self.computed - self.stated
@@ -196,14 +198,25 @@ class ReconciliationRow(BaseModel):
 class Reconciliation(BaseModel):
     rows: list[ReconciliationRow]
     unmapped_accounts: list[str]
+    vouchers_outside_years: list[str] = Field(
+        default_factory=list, description="voucher refs dated outside every fiscal year"
+    )
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_difference(self) -> Decimal:
         return sum((abs(r.difference) for r in self.rows), Decimal("0"))
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def ok(self) -> bool:
-        return self.total_difference == 0 and not self.unmapped_accounts
+        """True only when there is something to reconcile and nothing is off or left out."""
+        return (
+            bool(self.rows)
+            and self.total_difference == 0
+            and not self.unmapped_accounts
+            and not self.vouchers_outside_years
+        )
 
 
 # ---------------------------------------------------------------- flags (agent/)

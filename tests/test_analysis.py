@@ -16,14 +16,16 @@ from diligens.analysis.statements import monthly_statements
 from diligens.models import (
     Account,
     Balance,
+    FiscalYear,
     KPIs,
     Ledger,
+    NetDebtItem,
     Reconciliation,
     StatementLine,
     Transaction,
     Voucher,
 )
-from diligens.sie.generator import build_demo_company
+from diligens.sie.generator import build_demo_company, generate_demo_company
 from diligens.sie.parser import parse_sie
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -99,10 +101,60 @@ def _line(lines: list[StatementLine], name: str) -> StatementLine:
     return next(line for line in lines if line.line == name)
 
 
+def _voucher(ref: int, date: dt.date, debit: str, credit: str, amount: str) -> Voucher:
+    return Voucher(
+        series="X",
+        number=str(ref),
+        date=date,
+        transactions=[
+            Transaction(account=debit, amount=Decimal(amount)),
+            Transaction(account=credit, amount=-Decimal(amount)),
+        ],
+    )
+
+
+def _with_vouchers(ledger: Ledger, *lines: tuple[str, str, str]) -> Ledger:
+    """Add one balanced voucher per (debit account, credit account, amount) in April 2025."""
+    extra = [
+        _voucher(i, dt.date(2025, 4, 10), debit, credit, amount)
+        for i, (debit, credit, amount) in enumerate(lines, start=1)
+    ]
+    return ledger.model_copy(update={"vouchers": [*ledger.vouchers, *extra]})
+
+
+def _ledger(years: list[FiscalYear], vouchers: list[Voucher]) -> Ledger:
+    return Ledger(
+        company_name="Test AB",
+        org_nr="999999-9999",
+        fiscal_years=years,
+        accounts={},
+        opening_balances=[],
+        closing_balances=[],
+        results=[],
+        vouchers=vouchers,
+    )
+
+
+def _calendar_year(index: int, year: int) -> FiscalYear:
+    return FiscalYear(index=index, start=dt.date(year, 1, 1), end=dt.date(year, 12, 31))
+
+
+# Fiscal year starting mid month and not following the calendar, e.g. a new company.
+BROKEN_YEAR = FiscalYear(index=0, start=dt.date(2024, 5, 15), end=dt.date(2025, 4, 30))
+BROKEN_YEAR_LEDGER = _ledger(
+    [BROKEN_YEAR],
+    [
+        _voucher(1, dt.date(2024, 5, 20), "1930", "3041", "100000"),
+        _voucher(2, dt.date(2025, 4, 10), "5010", "1930", "40000"),
+    ],
+)
+
+
 def test_monthly_statements(minimal: Ledger, demo: Ledger) -> None:
     st = monthly_statements(minimal, map_accounts(minimal))
 
-    assert st.months == [f"2025-{m:02d}" for m in range(1, 13)]
+    # Stops at the last month with vouchers, like an export taken mid year.
+    assert st.months == ["2025-01", "2025-02", "2025-03"]
     revenue = _line(st.income, "Nettoomsättning")
     assert revenue.values["2025-01"] == Decimal("-100000.00")
     assert revenue.values["2025-02"] == 0
@@ -113,7 +165,7 @@ def test_monthly_statements(minimal: Ledger, demo: Ledger) -> None:
     assert st.account_movements["3041"]["2025-01"] == Decimal("-100000.00")
 
     cash = _line(st.balance, "Kassa och bank")
-    assert [cash.values[m] for m in ("2025-01", "2025-03", "2025-12")] == [225000, 145000, 145000]
+    assert [cash.values[m] for m in ("2025-01", "2025-03")] == [225000, 145000]
     assert _line(st.balance, "Kundfordringar").values["2025-01"] == 0
     assert _line(st.balance, "Moms och punktskatter").values["2025-03"] == Decimal("-10000.00")
     assert _line(st.balance, "Årets resultat (beräknat)").values["2025-03"] == -10000
@@ -129,6 +181,26 @@ def test_monthly_statements(minimal: Ledger, demo: Ledger) -> None:
     # The 2024 result is closed to equity, so the computed result restarts in 2025.
     assert _line(demo_st.balance, "Årets resultat (beräknat)").values["2024-12"] == 0
 
+    cut = demo.model_copy(
+        update={"vouchers": [v for v in demo.vouchers if v.date <= dt.date(2025, 9, 30)]}
+    )
+    assert monthly_statements(cut, map_accounts(cut)).months[-1] == "2025-09"
+
+    # A middle year without vouchers stays in, so months remain contiguous.
+    gap = _ledger(
+        [_calendar_year(-2, 2023), _calendar_year(-1, 2024), _calendar_year(0, 2025)],
+        [
+            _voucher(1, dt.date(2023, 1, 10), "1930", "3041", "100"),
+            _voucher(2, dt.date(2025, 1, 10), "1930", "3041", "100"),
+        ],
+    )
+    gap_months = monthly_statements(gap, map_accounts(gap)).months
+    assert len(gap_months) == 25 and gap_months[12] == "2024-01"
+
+    broken = monthly_statements(BROKEN_YEAR_LEDGER, map_accounts(BROKEN_YEAR_LEDGER))
+    assert broken.months[0] == "2024-05" and broken.months[-1] == "2025-04"
+    assert len(broken.months) == 12
+
 
 def _kpis(ledger: Ledger) -> KPIs:
     return compute_kpis(monthly_statements(ledger, map_accounts(ledger)))
@@ -139,22 +211,24 @@ def test_kpis(minimal: Ledger, demo: Ledger) -> None:
     kpis = _kpis(minimal)
 
     for name, value in expected["kpis_2025"].items():
-        assert kpis.ltm[name].values["2025-12"] == Decimal(value), name
-    assert kpis.ltm["nettoomsattning"].values["2025-11"] is None
-    assert kpis.ltm["bruttoresultat"].values["2025-12"] == Decimal("100000.00")
-    assert kpis.ltm["bruttomarginal"].values["2025-12"] == 1
-    assert kpis.ltm["ebitda_marginal"].values["2025-12"] == Decimal("0.1")
-    assert kpis.ltm["ebit"].values["2025-12"] == Decimal("10000.00")
-    assert kpis.ltm["tillvaxt"].values["2025-12"] is None
+        assert kpis.ytd[name].values["2025-03"] == Decimal(value), name
+    assert kpis.ytd["bruttoresultat"].values["2025-03"] == Decimal("100000.00")
+    assert kpis.ytd["bruttomarginal"].values["2025-03"] == 1
+    assert kpis.ytd["ebitda_marginal"].values["2025-03"] == Decimal("0.1")
+    assert kpis.ytd["ebit"].values["2025-03"] == Decimal("10000.00")
+    assert kpis.ltm["nettoomsattning"].values["2025-03"] is None  # only 3 months
+    assert kpis.ltm["tillvaxt"].values["2025-03"] is None
     assert kpis.monthly["nettoomsattning"].values["2025-01"] == Decimal("100000.00")
     assert kpis.monthly["ebitda_marginal"].values["2025-02"] is None  # no revenue
     assert "3000–3699" in kpis.monthly["nettoomsattning"].source_ref
 
-    d = _kpis(demo).ltm
+    demo_kpis = _kpis(demo)
+    d = demo_kpis.ltm
     assert d["nettoomsattning"].values["2024-12"] == Decimal("38500000.00")
     assert d["nettoomsattning"].values["2025-12"] == Decimal("42100000.00")
     assert d["tillvaxt"].values["2025-12"] == Decimal("42100000") / Decimal("38500000") - 1
     assert d["tillvaxt"].values["2025-11"] is None
+    assert demo_kpis.ytd["ebitda"].values["2025-12"] == d["ebitda"].values["2025-12"]
     for month in ("2024-12", "2025-12"):
         v = {k: s.values[month] for k, s in d.items()}
         assert v["ebitda"] == (
@@ -167,53 +241,64 @@ def test_kpis(minimal: Ledger, demo: Ledger) -> None:
         assert v["ebit"] == v["ebitda"] - v["avskrivningar"]
         assert v["avskrivningar"] == Decimal("300000.00")
 
-
-def _with_vouchers(ledger: Ledger, *lines: tuple[str, str, str]) -> Ledger:
-    """Add one balanced voucher per (debit account, credit account, amount) in April."""
-    extra = [
-        Voucher(
-            series="X",
-            number=str(i),
-            date=dt.date(2025, 4, 10),
-            transactions=[
-                Transaction(account=debit, amount=Decimal(amount)),
-                Transaction(account=credit, amount=-Decimal(amount)),
-            ],
-        )
-        for i, (debit, credit, amount) in enumerate(lines, start=1)
-    ]
-    return ledger.model_copy(update={"vouchers": [*ledger.vouchers, *extra]})
+    with pytest.raises(ValueError, match="Inga verifikationer"):
+        _kpis(minimal.model_copy(update={"vouchers": []}))
 
 
-def test_nwc_monthly_and_normal_level(minimal: Ledger) -> None:
+def test_nwc_monthly_and_normal_level(minimal: Ledger, demo: Ledger) -> None:
     kpis = _kpis(minimal)
 
     nwc = kpis.nwc.values
-    assert (nwc["2025-01"], nwc["2025-02"]) == (Decimal("-25000.00"), Decimal("-45000.00"))
-    assert all(nwc[f"2025-{m:02d}"] == Decimal("-35000.00") for m in range(3, 13))
-    assert kpis.nwc_normal.value == Decimal("-35000.00")
-    assert "12" in kpis.nwc_normal.source_ref
+    assert [nwc[m] for m in kpis.months] == [
+        Decimal("-25000.00"),
+        Decimal("-45000.00"),
+        Decimal("-35000.00"),
+    ]
+    assert kpis.nwc_normal.value is None  # needs 12 month ends
+
+    demo_kpis = _kpis(demo)
+    year_end = {b.account: b.amount for b in demo.closing_balances if b.year_index == 0}
+    excluded = {"2410", "2417", "2840", "2893", "2898"}
+    in_nwc = [
+        a
+        for a in year_end
+        if (1400 <= int(a) <= 1799 or 2400 <= int(a) <= 2499 or 2600 <= int(a) <= 2999)
+        and a not in excluded
+        and not 2860 <= int(a) <= 2869
+    ]
+    assert demo_kpis.nwc.values["2025-12"] == sum(year_end[a] for a in in_nwc)
+    last_12 = [demo_kpis.nwc.values[f"2025-{m:02d}"] or 0 for m in range(1, 13)]
+    assert demo_kpis.nwc_normal.value == sum(last_12) / 12
+    assert "12" in demo_kpis.nwc_normal.source_ref
 
     # Bank overdraft (2417), short term loan (2840), owner loan (2893) and an unpaid
     # dividend (2898) are financing, not working capital.
-    financed = _with_vouchers(
-        minimal,
-        ("1930", "2417", "50000"),
-        ("1930", "2840", "30000"),
-        ("1930", "2893", "20000"),
-        ("2091", "2898", "15000"),
+    financed = _kpis(
+        _with_vouchers(
+            minimal,
+            ("1930", "2417", "50000"),
+            ("1930", "2840", "30000"),
+            ("1930", "2893", "20000"),
+            ("2091", "2898", "15000"),
+        )
     )
-    assert _kpis(financed).nwc.values == kpis.nwc.values
+    assert [financed.nwc.values[m] for m in kpis.months] == [nwc[m] for m in kpis.months]
+    assert financed.nwc.values["2025-04"] == nwc["2025-03"]
+
+
+def _estimated(kpis: KPIs) -> list[NetDebtItem]:
+    return [i for i in kpis.net_debt_items if i.kind == "beraknad_skatt"]
 
 
 def test_net_debt_items(minimal: Ledger, demo: Ledger) -> None:
     kpis = _kpis(minimal)
 
-    assert kpis.net_debt_month == "2025-12"
+    assert kpis.net_debt_month == "2025-03"
     items = {i.kind: i for i in kpis.net_debt_items}
     assert items["kassa"].amount == Decimal("-145000.00") and items["kassa"].accounts == ["1930"]
     # Open year: 20.6 % of the 10 000 profit so far, not yet booked.
     assert items["beraknad_skatt"].amount == Decimal("2060.00")
+    assert "2025" in items["beraknad_skatt"].label
     assert kpis.net_debt == Decimal("-142940.00")
     assert kpis.net_debt == sum(i.amount for i in kpis.net_debt_items)
     assert all(i.source_ref for i in kpis.net_debt_items)
@@ -234,6 +319,10 @@ def test_net_debt_items(minimal: Ledger, demo: Ledger) -> None:
     # Owner loan is listed for assessment, not added to net debt; the cash it brought is.
     assert financed.net_debt == kpis.net_debt + Decimal("80000") - Decimal("100000")
 
+    # Tax already booked on 8910 means the company has taken a view: no estimate.
+    taxed = _kpis(_with_vouchers(minimal, ("8910", "2512", "1000")))
+    assert _estimated(taxed) == []
+
     d = _kpis(demo)
     demo_items = {i.kind: i for i in d.net_debt_items}
     assert demo_items["rantebarande"].accounts == ["2350"]
@@ -245,16 +334,41 @@ def test_net_debt_items(minimal: Ledger, demo: Ledger) -> None:
         for t in v.transactions
         if 3000 <= int(t.account) <= 8899
     )
-    assert demo_items["beraknad_skatt"].amount == (ebt_2025 * Decimal("0.206")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
+    tax_2025 = (ebt_2025 * Decimal("0.206")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    assert [i.amount for i in _estimated(d)] == [tax_2025]  # 2024 is closed
+
+    # Deal in early 2026 before 2025 is closed: both open years get a line.
+    early_2026 = demo.model_copy(
+        update={
+            "fiscal_years": [*demo.fiscal_years, _calendar_year(1, 2026)],
+            "vouchers": [
+                *demo.vouchers,
+                _voucher(1, dt.date(2026, 1, 15), "1930", "3041", "1000"),
+            ],
+        }
     )
+    both = _kpis(early_2026)
+    assert both.net_debt_month == "2026-01"
+    assert [(i.label, i.amount) for i in _estimated(both)] == [
+        ("Beräknad skatt 2025 (ej bokförd)", tax_2025),
+        ("Beräknad skatt 2026 (ej bokförd)", Decimal("206.00")),
+    ]
+
+    # Broken fiscal year starting mid month: May revenue counts. 20.6 % of 60 000.
+    broken = _kpis(BROKEN_YEAR_LEDGER)
+    assert [(i.label, i.amount) for i in _estimated(broken)] == [
+        ("Beräknad skatt 2024/25 (ej bokförd)", Decimal("12360.00"))
+    ]
 
 
 def _reconcile(ledger: Ledger) -> Reconciliation:
     return reconcile(ledger, monthly_statements(ledger, map_accounts(ledger)))
 
 
-def test_reconciliation_demo_is_zero(minimal: Ledger, demo: Ledger) -> None:
+def test_reconciliation_demo_is_zero(minimal: Ledger, tmp_path: Path) -> None:
+    generate_demo_company(42, tmp_path / "demo_bolag.se")
+    demo = parse_sie(tmp_path / "demo_bolag.se")
+
     for ledger in (minimal, demo):
         rec = _reconcile(ledger)
         assert rec.ok and rec.total_difference == 0
@@ -266,6 +380,8 @@ def test_reconciliation_demo_is_zero(minimal: Ledger, demo: Ledger) -> None:
         (0, "UB"),
     }
     assert any(r.account == "3041" and r.against == "RES" for r in rec.rows)
+    dumped = rec.model_dump()
+    assert dumped["ok"] is True and dumped["rows"][0]["difference"] == 0
 
     def bump(balances: list[Balance], account: str) -> list[Balance]:
         return [
@@ -284,9 +400,30 @@ def test_reconciliation_demo_is_zero(minimal: Ledger, demo: Ledger) -> None:
     off = [(r.against, r.account, r.difference) for r in _reconcile(tampered).rows if r.difference]
     assert sorted(off) == [("RES", "6540", Decimal("-1")), ("UB", "1930", Decimal("-1"))]
 
+    # A #RES row on a balance sheet account is not silently skipped.
+    misplaced = minimal.model_copy(
+        update={"results": [*minimal.results, Balance(year_index=0, account="1930", amount=5)]}
+    )
+    assert [
+        (r.against, r.account, r.difference) for r in _reconcile(misplaced).rows if r.difference
+    ] == [("RES", "1930", Decimal("-5"))]
+
     stray = _with_vouchers(minimal, ("1930", "9999", "100"))
     rec = _reconcile(stray)
     assert rec.unmapped_accounts == ["9999"] and not rec.ok
+
+    early = minimal.model_copy(
+        update={
+            "vouchers": [
+                *minimal.vouchers,
+                _voucher(9, dt.date(2024, 12, 31), "5010", "1930", "50000"),
+            ]
+        }
+    )
+    rec = _reconcile(early)
+    assert rec.vouchers_outside_years == ["X9"] and not rec.ok
+
+    assert not _reconcile(minimal.model_copy(update={"vouchers": []})).ok
 
 
 FORBIDDEN_MODULES = {

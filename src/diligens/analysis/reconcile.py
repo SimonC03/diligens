@@ -1,6 +1,7 @@
 """Reconcile the monthly statements against #RES and #UB in the SIE file."""
 
 from decimal import Decimal
+from typing import Literal
 
 from diligens.analysis.mapping import map_accounts
 from diligens.analysis.statements import months_of
@@ -14,15 +15,19 @@ def _stated(balances: list[Balance], year_index: int) -> dict[str, Decimal]:
 
 
 def reconcile(ledger: Ledger, statements: Statements) -> Reconciliation:
-    """Per fiscal year: sum of monthly RR per account vs #RES, BR at year end vs #UB.
+    """Per fiscal year: sum of monthly RR per account vs #RES, BR at the last month vs #UB.
 
-    Every mapped account that has a value in either source gets a row; a missing value
-    counts as 0.00. Unmapped accounts are listed, since the statements leave them out.
+    Every account with a value in either source gets a row; a missing value counts as 0.00.
+    Unmapped accounts and vouchers outside every fiscal year are listed, since the
+    statements leave them out.
     """
     rows: list[ReconciliationRow] = []
     for year in statements.fiscal_years:
-        months = months_of(year)
-        checks = (
+        in_year = set(months_of(year))
+        months = [m for m in statements.months if m in in_year]
+        if not months:
+            continue
+        checks: tuple[tuple[Literal["RES", "UB"], dict[str, Decimal], dict[str, Decimal]], ...] = (
             (
                 "RES",
                 {
@@ -38,14 +43,25 @@ def reconcile(ledger: Ledger, statements: Statements) -> Reconciliation:
             ),
         )
         for against, computed, stated in checks:
-            for account in sorted(a for a in computed if computed[a] != 0 or a in stated):
+            accounts = {a for a, v in computed.items() if v != 0} | stated.keys()
+            for account in sorted(accounts):
                 rows.append(
                     ReconciliationRow(
                         year_index=year.index,
                         account=account,
                         against=against,
-                        computed=computed[account],
+                        computed=computed.get(account, ZERO),
                         stated=stated.get(account, ZERO),
                     )
                 )
-    return Reconciliation(rows=rows, unmapped_accounts=map_accounts(ledger).unmapped)
+
+    outside = [
+        v.ref
+        for v in ledger.vouchers
+        if not any(fy.start <= v.date <= fy.end for fy in ledger.fiscal_years)
+    ]
+    return Reconciliation(
+        rows=rows,
+        unmapped_accounts=map_accounts(ledger).unmapped,
+        vouchers_outside_years=outside,
+    )

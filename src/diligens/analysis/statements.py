@@ -29,18 +29,20 @@ def months_of(year: FiscalYear) -> list[str]:
 def monthly_statements(ledger: Ledger, mapping: Mapping) -> Statements:
     """RR movements per calendar month (voucher date) and BR month end balances.
 
-    Covers the fiscal years that have vouchers. Each year's BR starts from its #IB. Vouchers
-    outside those years and unmapped accounts are left out; reconcile() reports them.
+    Covers every fiscal year from the first to the last one with vouchers, so months stay
+    contiguous, and stops at the last month with vouchers: an export taken mid year has no
+    empty trailing months. Each year's BR starts from its #IB. Vouchers outside those years
+    and unmapped accounts are left out; reconcile() reports them.
     """
-    years = sorted(
-        (
-            fy
-            for fy in ledger.fiscal_years
-            if any(fy.start <= v.date <= fy.end for v in ledger.vouchers)
-        ),
-        key=lambda fy: fy.start,
-    )
-    months_by_year = {fy.index: months_of(fy) for fy in years}
+    ordered = sorted(ledger.fiscal_years, key=lambda fy: fy.start)
+    dated = [v.date for v in ledger.vouchers if any(fy.start <= v.date <= fy.end for fy in ordered)]
+    if dated:
+        first_date, last_date = min(dated), max(dated)
+        years = [fy for fy in ordered if fy.end >= first_date and fy.start <= last_date]
+        last_month = month_key(last_date)
+    else:
+        years, last_month = [], ""
+    months_by_year = {fy.index: [m for m in months_of(fy) if m <= last_month] for fy in years}
     months = [m for fy in years for m in months_by_year[fy.index]]
     covered = set(months)
 

@@ -104,9 +104,9 @@ counted in net debt not NWC; 2350 to 2359 long term bank loans in net debt.
 - Net debt = interest bearing debt (2330 to 2359, 2410, 2417, 2840, leasing if booked) plus
   tax debt (2500 to 2599) minus kassa och bank (1900 to 1999) minus kortfristiga
   placeringar (1800 to 1899)
-- Open fiscal year (result not yet closed to equity): add "Beräknad skatt innevarande år"
-  = tax rate (20.6 %) x result before tax so far (3000 to 8899), minus tax already booked
-  on 8900 to 8989, never below zero. Shown as its own line, marked as an assumption.
+- Each open fiscal year (result not closed to equity and no tax booked on 8900 to 8989):
+  add "Beräknad skatt <år> (ej bokförd)" = tax rate (20.6 %) x result before tax so far
+  (3000 to 8899), never below zero. Shown as its own line, marked as an assumption.
 - Debt like items, in neither NWC nor net debt, listed for the advisor to assess:
   avsättningar 2200 to 2299, bond and convertible loans 2300 to 2329, long term group and
   related party debt 2360 to 2399, short term group debt 2860 to 2869, related persons
