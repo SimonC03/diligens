@@ -1,0 +1,39 @@
+{
+  "company_name": "Testbolaget Åkeri AB",
+  "org_nr": "999999-9999",
+  "fiscal_years": [{"index": 0, "start": "2025-01-01", "end": "2025-12-31"}],
+  "account_count": 10,
+  "voucher_count": 5,
+  "transaction_count": 13,
+  "voucher_refs": ["A1", "A2", "B1", "B2", "C1"],
+  "voucher_b2": {
+    "text": "Konsultarvode \"Ägarbolaget AB\"",
+    "date": "2025-03-15",
+    "reg_date": "2025-03-16",
+    "last_transaction": {"account": "1930", "amount": "-50000.00", "date": "2025-03-15", "text": "Utbetalning"}
+  },
+  "opening_balances": {"1930": "100000.00", "2081": "-100000.00"},
+  "closing_balances": {
+    "1510": "0.00",
+    "1930": "145000.00",
+    "2081": "-100000.00",
+    "2440": "-25000.00",
+    "2611": "-25000.00",
+    "2641": "15000.00"
+  },
+  "results": {"3041": "-100000.00", "5010": "20000.00", "6550": "40000.00", "7010": "30000.00"},
+  "integrity_issues": 0,
+  "warnings_contain": ["#OKANDTAGG"],
+  "kpis_2025": {
+    "nettoomsattning": "100000.00",
+    "ebitda": "10000.00",
+    "personalkostnader": "30000.00",
+    "ovriga_externa_kostnader": "60000.00"
+  },
+  "notes": [
+    "File is CP437 with CRLF line endings, as most Swedish accounting programs write it.",
+    "Sum of all UB is 10000.00 = minus the period result (-10000.00) before closing.",
+    "B2 has an escaped quote in the voucher text, a reg date, and a TRANS with date and text.",
+    "#OKANDTAGG is an unknown tag and must produce a warning, not an error."
+  ]
+}

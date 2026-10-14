@@ -1,0 +1,10 @@
+# LF everywhere so Windows, macOS, Linux and CI see identical files
+* text=auto eol=lf
+
+# SIE files are CP437 with CRLF; keep the exact bytes
+*.se -text
+*.SE -text
+
+# Binary
+*.xlsx binary
+*.zip binary
