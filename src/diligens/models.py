@@ -13,9 +13,13 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------- ledger (sie/)
 
 
+AccountType = Literal["T", "S", "K", "I"]
+
+
 class Account(BaseModel):
     number: str
     name: str
+    type: AccountType | None = Field(default=None, description="#KTYP, optional")
 
 
 class FiscalYear(BaseModel):
@@ -30,11 +34,21 @@ class Balance(BaseModel):
     amount: Decimal
 
 
+class PeriodBalance(BaseModel):
+    year_index: int
+    period: str = Field(description="YYYYMM as in #PSALDO")
+    account: str
+    amount: Decimal
+
+
 class Transaction(BaseModel):
     account: str
     amount: Decimal
     date: dt.date | None = None
     text: str | None = None
+    objects: list[tuple[str, str]] = Field(
+        default_factory=list, description="(dimension, object) pairs from the {} list"
+    )
 
 
 class Voucher(BaseModel):
@@ -54,11 +68,15 @@ class Voucher(BaseModel):
 class Ledger(BaseModel):
     company_name: str
     org_nr: str
+    program: str | None = Field(default=None, description="#PROGRAM")
+    generated: dt.date | None = Field(default=None, description="#GEN")
+    chart_type: str | None = Field(default=None, description="#KPTYP")
     fiscal_years: list[FiscalYear]
     accounts: dict[str, Account]
     opening_balances: list[Balance] = Field(description="#IB")
     closing_balances: list[Balance] = Field(description="#UB")
     results: list[Balance] = Field(description="#RES")
+    period_balances: list[PeriodBalance] = Field(default_factory=list, description="#PSALDO")
     vouchers: list[Voucher]
     warnings: list[str] = Field(default_factory=list, description="unknown tags etc.")
 

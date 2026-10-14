@@ -6,10 +6,12 @@ from pathlib import Path
 
 from diligens.models import (
     Account,
+    AccountType,
     Balance,
     FiscalYear,
     IntegrityIssue,
     Ledger,
+    PeriodBalance,
     Transaction,
     Voucher,
 )
@@ -118,11 +120,30 @@ def _transaction(tokens: list[Token], line_no: int) -> Transaction:
         amount=amount,
         date=_date(raw_date, line_no) if raw_date else None,
         text=_opt_str(tokens, 5),
+        objects=_objects(tokens[2], line_no),
     )
 
 
-# Tags that are recognised but carry nothing the ledger needs yet.
-_IGNORED_TAGS = {"#FLAGGA", "#FORMAT", "#PROGRAM", "#GEN", "#KPTYP", "#KTYP", "#PSALDO"}
+def _objects(group: Token, line_no: int) -> list[tuple[str, str]]:
+    if not isinstance(group, list) or len(group) % 2:
+        raise SieParseError(line_no, "objektlistan måste bestå av par (dimension, objekt)")
+    return list(zip(group[::2], group[1::2], strict=True))
+
+
+def _period_balance(tokens: list[Token], line_no: int) -> PeriodBalance:
+    # #PSALDO year period account {objects} amount [quantity]
+    return PeriodBalance(
+        year_index=int(_str(tokens, 1, line_no)),
+        period=_str(tokens, 2, line_no),
+        account=_str(tokens, 3, line_no),
+        amount=_amount(_str(tokens, 5, line_no), line_no),
+    )
+
+
+_ACCOUNT_TYPES: dict[str, AccountType] = {"T": "T", "S": "S", "K": "K", "I": "I"}
+
+# Recognised tags whose values the ledger does not keep.
+_IGNORED_TAGS = {"#FLAGGA", "#FORMAT"}
 
 
 def parse_sie(path: Path) -> Ledger:
@@ -131,11 +152,15 @@ def parse_sie(path: Path) -> Ledger:
 
     company_name = ""
     org_nr = ""
+    program: str | None = None
+    generated: dt.date | None = None
+    chart_type: str | None = None
     fiscal_years: list[FiscalYear] = []
     accounts: dict[str, Account] = {}
     opening: list[Balance] = []
     closing: list[Balance] = []
     results: list[Balance] = []
+    period_balances: list[PeriodBalance] = []
     vouchers: list[Voucher] = []
     warnings: list[str] = []
 
@@ -179,6 +204,12 @@ def parse_sie(path: Path) -> Ledger:
             sie_type = _str(tokens, 1, line_no)
             if sie_type != "4":
                 raise SieParseError(line_no, f"SIE typ {sie_type} stöds inte, endast typ 4")
+        elif tag == "#PROGRAM":
+            program = _str(tokens, 1, line_no)
+        elif tag == "#GEN":
+            generated = _date(_str(tokens, 1, line_no), line_no)
+        elif tag == "#KPTYP":
+            chart_type = _str(tokens, 1, line_no)
         elif tag == "#FNAMN":
             company_name = _str(tokens, 1, line_no)
         elif tag == "#ORGNR":
@@ -193,13 +224,27 @@ def parse_sie(path: Path) -> Ledger:
             )
         elif tag == "#KONTO":
             number = _str(tokens, 1, line_no)
-            accounts[number] = Account(number=number, name=_opt_str(tokens, 2) or "")
+            previous = accounts.get(number)
+            accounts[number] = Account(
+                number=number,
+                name=_opt_str(tokens, 2) or "",
+                type=previous.type if previous else None,
+            )
+        elif tag == "#KTYP":
+            number = _str(tokens, 1, line_no)
+            raw_type = _str(tokens, 2, line_no).upper()
+            if raw_type not in _ACCOUNT_TYPES:
+                raise SieParseError(line_no, f"okänd kontotyp {raw_type!r}")
+            existing = accounts.get(number) or Account(number=number, name="")
+            accounts[number] = existing.model_copy(update={"type": _ACCOUNT_TYPES[raw_type]})
         elif tag == "#IB":
             opening.append(_balance(tokens, line_no))
         elif tag == "#UB":
             closing.append(_balance(tokens, line_no))
         elif tag == "#RES":
             results.append(_balance(tokens, line_no))
+        elif tag == "#PSALDO":
+            period_balances.append(_period_balance(tokens, line_no))
         elif tag == "#VER":
             pending, pending_line = tokens, line_no
         elif tag in _IGNORED_TAGS:
@@ -213,11 +258,15 @@ def parse_sie(path: Path) -> Ledger:
     return Ledger(
         company_name=company_name,
         org_nr=org_nr,
+        program=program,
+        generated=generated,
+        chart_type=chart_type,
         fiscal_years=fiscal_years,
         accounts=accounts,
         opening_balances=opening,
         closing_balances=closing,
         results=results,
+        period_balances=period_balances,
         vouchers=vouchers,
         warnings=warnings,
     )
