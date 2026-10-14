@@ -3,6 +3,7 @@
 import datetime as dt
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import get_args
 
 from diligens.models import (
     Account,
@@ -15,6 +16,7 @@ from diligens.models import (
     Transaction,
     Voucher,
 )
+from diligens.sie.accounts import is_balance_account, is_result_account
 
 Token = str | list[str]
 
@@ -27,7 +29,7 @@ class SieParseError(ValueError):
         self.line_no = line_no
 
 
-def _tokenize(line: str) -> list[Token]:
+def _tokenize(line: str, line_no: int) -> list[Token]:
     """Split a SIE line into fields. Quoted strings unescape `\\"`; `{...}` becomes a list."""
     tokens: list[Token] = []
     group: list[str] | None = None
@@ -54,6 +56,8 @@ def _tokenize(line: str) -> list[Token]:
                     i += 1
                 buf.append(line[i])
                 i += 1
+            if i >= n:
+                raise SieParseError(line_no, "citattecken avslutas inte")
             i += 1  # closing quote
             value = "".join(buf)
         else:
@@ -100,9 +104,16 @@ def _amount(raw: str, line_no: int) -> Decimal:
         raise SieParseError(line_no, f"ogiltigt belopp {raw!r}") from exc
 
 
+def _int(raw: str, line_no: int) -> int:
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise SieParseError(line_no, f"ogiltigt årsindex {raw!r}") from exc
+
+
 def _balance(tokens: list[Token], line_no: int) -> Balance:
     return Balance(
-        year_index=int(_str(tokens, 1, line_no)),
+        year_index=_int(_str(tokens, 1, line_no), line_no),
         account=_str(tokens, 2, line_no),
         amount=_amount(_str(tokens, 3, line_no), line_no),
     )
@@ -132,15 +143,18 @@ def _objects(group: Token, line_no: int) -> list[tuple[str, str]]:
 
 def _period_balance(tokens: list[Token], line_no: int) -> PeriodBalance:
     # #PSALDO year period account {objects} amount [quantity]
+    if len(tokens) < 6:
+        raise SieParseError(line_no, "#PSALDO saknar objektlista eller belopp")
     return PeriodBalance(
-        year_index=int(_str(tokens, 1, line_no)),
+        year_index=_int(_str(tokens, 1, line_no), line_no),
         period=_str(tokens, 2, line_no),
         account=_str(tokens, 3, line_no),
         amount=_amount(_str(tokens, 5, line_no), line_no),
+        objects=_objects(tokens[4], line_no),
     )
 
 
-_ACCOUNT_TYPES: dict[str, AccountType] = {"T": "T", "S": "S", "K": "K", "I": "I"}
+_ACCOUNT_TYPES: dict[str, AccountType] = {t: t for t in get_args(AccountType)}
 
 # Recognised tags whose values the ledger does not keep.
 _IGNORED_TAGS = {"#FLAGGA", "#FORMAT"}
@@ -174,7 +188,9 @@ def parse_sie(path: Path) -> Ledger:
             continue
 
         if line == "{":
-            if pending is None or block is not None:
+            if block is not None:
+                raise SieParseError(pending_line, "#VER avslutas inte med '}'")
+            if pending is None:
                 raise SieParseError(line_no, "'{' utan föregående #VER")
             block = []
             continue
@@ -185,7 +201,7 @@ def parse_sie(path: Path) -> Ledger:
             pending, block = None, None
             continue
 
-        tokens = _tokenize(line)
+        tokens = _tokenize(line, line_no)
         tag = _str(tokens, 0, line_no).upper()
 
         if block is not None:
@@ -194,6 +210,8 @@ def parse_sie(path: Path) -> Ledger:
             elif tag in {"#RTRANS", "#BTRANS"}:
                 # Supplementary/removed rows; #TRANS carries the booked amounts.
                 continue
+            elif tag == "#VER":
+                raise SieParseError(pending_line, "#VER avslutas inte med '}'")
             else:
                 warnings.append(f"rad {line_no}: okänd tagg {tag} i verifikat ignorerad")
             continue
@@ -217,7 +235,7 @@ def parse_sie(path: Path) -> Ledger:
         elif tag == "#RAR":
             fiscal_years.append(
                 FiscalYear(
-                    index=int(_str(tokens, 1, line_no)),
+                    index=_int(_str(tokens, 1, line_no), line_no),
                     start=_date(_str(tokens, 2, line_no), line_no),
                     end=_date(_str(tokens, 3, line_no), line_no),
                 )
@@ -247,6 +265,8 @@ def parse_sie(path: Path) -> Ledger:
             period_balances.append(_period_balance(tokens, line_no))
         elif tag == "#VER":
             pending, pending_line = tokens, line_no
+        elif tag in {"#TRANS", "#RTRANS", "#BTRANS"}:
+            raise SieParseError(line_no, f"{tag} utanför verifikat")
         elif tag in _IGNORED_TAGS:
             continue
         else:
@@ -297,6 +317,7 @@ def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
     zero = Decimal("0")
     issues: list[IntegrityIssue] = []
 
+    unknown: dict[str, Decimal] = {}
     for voucher in ledger.vouchers:
         total = sum((t.amount for t in voucher.transactions), zero)
         if total != zero:
@@ -305,6 +326,25 @@ def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
                     kind="unbalanced_voucher", ref=voucher.ref, expected=zero, actual=total
                 )
             )
+        if not any(fy.start <= voucher.date <= fy.end for fy in ledger.fiscal_years):
+            debit = sum((t.amount for t in voucher.transactions if t.amount > 0), zero)
+            issues.append(
+                IntegrityIssue(
+                    kind="voucher_outside_fiscal_year",
+                    ref=voucher.ref,
+                    expected=zero,
+                    actual=debit,
+                )
+            )
+        for t in voucher.transactions:
+            if not (is_balance_account(t.account) or is_result_account(t.account)):
+                unknown[t.account] = unknown.get(t.account, zero) + t.amount
+    for account in sorted(unknown):
+        issues.append(
+            IntegrityIssue(
+                kind="unknown_account_class", ref=account, expected=zero, actual=unknown[account]
+            )
+        )
 
     for year in ledger.fiscal_years:
         trans_sum: dict[str, Decimal] = {}
@@ -321,7 +361,7 @@ def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
 
         for account in sorted(trans_sum.keys() | ib.keys() | ub.keys() | res.keys()):
             moved = trans_sum.get(account, zero)
-            if _is_balance_account(account):
+            if is_balance_account(account):
                 actual = ib.get(account, zero) + moved
                 stated = ub.get(account, zero)
                 if actual != stated:
@@ -330,7 +370,7 @@ def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
                             kind="ib_trans_ub_mismatch", ref=account, expected=stated, actual=actual
                         )
                     )
-            elif _is_result_account(account):
+            elif is_result_account(account):
                 stated = res.get(account, zero)
                 if moved != stated:
                     issues.append(
@@ -338,16 +378,21 @@ def check_integrity(ledger: Ledger) -> list[IntegrityIssue]:
                             kind="trans_res_mismatch", ref=account, expected=stated, actual=moved
                         )
                     )
+
+        # Sum of all UB equals minus the period result (both zero once the year is closed).
+        ub_total = sum((a for acc, a in ub.items() if is_balance_account(acc)), zero)
+        res_total = sum((a for acc, a in res.items() if is_result_account(acc)), zero)
+        if ub_total != -res_total:
+            issues.append(
+                IntegrityIssue(
+                    kind="ub_res_mismatch",
+                    ref=f"RAR {year.index}",
+                    expected=-res_total,
+                    actual=ub_total,
+                )
+            )
     return issues
 
 
 def _by_account(balances: list[Balance], year_index: int) -> dict[str, Decimal]:
     return {b.account: b.amount for b in balances if b.year_index == year_index}
-
-
-def _is_balance_account(account: str) -> bool:
-    return account[:1] in {"1", "2"}
-
-
-def _is_result_account(account: str) -> bool:
-    return account[:1] in {"3", "4", "5", "6", "7", "8"}

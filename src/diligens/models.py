@@ -39,6 +39,9 @@ class PeriodBalance(BaseModel):
     period: str = Field(description="YYYYMM as in #PSALDO")
     account: str
     amount: Decimal
+    objects: list[tuple[str, str]] = Field(
+        default_factory=list, description="empty for the account total, else one dimension"
+    )
 
 
 class Transaction(BaseModel):
@@ -82,8 +85,15 @@ class Ledger(BaseModel):
 
 
 class IntegrityIssue(BaseModel):
-    kind: Literal["unbalanced_voucher", "ib_trans_ub_mismatch", "trans_res_mismatch"]
-    ref: str = Field(description="voucher ref or account number")
+    kind: Literal[
+        "unbalanced_voucher",
+        "ib_trans_ub_mismatch",
+        "trans_res_mismatch",
+        "ub_res_mismatch",
+        "voucher_outside_fiscal_year",
+        "unknown_account_class",
+    ]
+    ref: str = Field(description="voucher ref, account number or 'RAR <index>'")
     expected: Decimal
     actual: Decimal
 

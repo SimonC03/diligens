@@ -2,14 +2,15 @@
 
 import datetime as dt
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from diligens.models import Balance, FiscalYear
-from diligens.sie.parser import check_integrity, parse_sie
+from diligens.models import Balance, FiscalYear, Transaction, Voucher
+from diligens.sie.parser import SieParseError, check_integrity, parse_sie
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -82,11 +83,14 @@ ALL_TAGS_SIE = """#FLAGGA 0
 #UB -1 1930 100.00
 #RES 0 3041 1000.00
 #PSALDO 0 202501 3041 {} 1000.00
+#PSALDO 0 202501 3041 {1 "100"} 1000.00
 #VER A 7 20250110 "Text med \\"citat\\" i"
 {
 #TRANS 3041 {1 "100"} 1000.00
 #TRANS 1930 {} -600.00 20250111
 #TRANS 1930 {} -400.00 20250112 "Rad med \\"citat\\" och åäö"
+#RTRANS 1930 {} -400.00 20250112 "Borttagen rad"
+#TRANS 1930 {} 0.00 20250112 "Kvantitet och sign" 2 "AB"
 }
 """
 
@@ -114,28 +118,50 @@ def test_parser_supports_all_domain_tags(tmp_path: Path) -> None:
     }
     assert len(ledger.closing_balances) == 2
     assert ledger.results[0].amount == Decimal("1000.00")
-    psaldo = ledger.period_balances[0]
-    assert (psaldo.year_index, psaldo.period, psaldo.account, psaldo.amount) == (
+    total, by_object = ledger.period_balances
+    assert (total.year_index, total.period, total.account, total.amount) == (
         0,
         "202501",
         "3041",
         Decimal("1000.00"),
     )
+    assert total.objects == [] and by_object.objects == [("1", "100")]
 
     (voucher,) = ledger.vouchers
     assert voucher.ref == "A7"
     assert voucher.text == 'Text med "citat" i'
     assert voucher.reg_date is None
-    with_objects, date_only, date_and_text = voucher.transactions
+    with_objects, date_only, date_and_text, with_quantity = voucher.transactions
     assert with_objects.objects == [("1", "100")]
     assert with_objects.date is None and with_objects.text is None
     assert date_only.date == dt.date(2025, 1, 11) and date_only.text is None
     assert date_and_text.text == 'Rad med "citat" och åäö'
+    assert with_quantity.text == "Kvantitet och sign"
     assert ledger.warnings == []
 
     wrong_type = _write_cp437(tmp_path / "typ3.se", ALL_TAGS_SIE.replace("#SIETYP 4", "#SIETYP 3"))
-    with pytest.raises(ValueError, match="SIE typ 3"):
+    with pytest.raises(SieParseError, match="SIE typ 3"):
         parse_sie(wrong_type)
+
+    # Malformed records fail with a line number; the header takes lines 1 and 2.
+    header = "#SIETYP 4\n#RAR 0 20250101 20251231\n"
+    ver = '#VER A 1 20250101 "x"\n'
+    malformed = {
+        "rad 3: ogiltigt datum": '#VER A 1 2025013X "x"\n{\n}\n',
+        "rad 6: ogiltigt belopp": ver + "{\n#TRANS 1930 {} 1.00\n#TRANS 3041 {} -1,00\n}\n",
+        "rad 5: objektlistan": ver + "{\n#TRANS 1930 {1} 1.00\n}\n",
+        "rad 3: '}' utan öppnat": "}\n",
+        "rad 3: #VER saknar": ver + '#KONTO 1930 "x"\n',
+        "rad 3: #VER avslutas inte": ver + "{\n#TRANS 1930 {} 0.00\n",
+        "rad 3: #VER avslutas inte med": ver + "{\n#TRANS 1930 {} 0.00\n" + ver,
+        "rad 3: #TRANS utanför": "#TRANS 1930 {} 1.00\n",
+        "rad 3: ogiltigt årsindex": "#IB x 1930 1.00\n",
+        "rad 3: citattecken": '#FNAMN "Bolaget AB\n',
+    }
+    for message, body in malformed.items():
+        bad = _write_cp437(tmp_path / "bad.se", header + body)
+        with pytest.raises(SieParseError, match=re.escape(message)):
+            parse_sie(bad)
 
 
 def test_integrity_check_returns_violations() -> None:
@@ -183,5 +209,23 @@ def test_integrity_check_returns_violations() -> None:
     assert sorted((i.kind, i.ref, i.expected, i.actual) for i in issues) == [
         ("ib_trans_ub_mismatch", "1930", Decimal("145001.00"), Decimal("145000.00")),
         ("trans_res_mismatch", "6550", Decimal("41000.00"), Decimal("40000.00")),
+        # Sum of UB (10 001) must equal minus the result (-(-8 900)).
+        ("ub_res_mismatch", "RAR 0", Decimal("8900.00"), Decimal("10001.00")),
         ("unbalanced_voucher", "B1", Decimal("0"), Decimal("100.00")),
+    ]
+
+    # Amounts that no reconciliation would catch: outside every #RAR, or outside class 1-8.
+    stray = Voucher(
+        series="Z",
+        number="1",
+        date=dt.date(2026, 1, 5),
+        transactions=[
+            Transaction(account="1930", amount=Decimal("500.00")),
+            Transaction(account="9010", amount=Decimal("-500.00")),
+        ],
+    )
+    issues = check_integrity(ledger.model_copy(update={"vouchers": [*ledger.vouchers, stray]}))
+    assert sorted((i.kind, i.ref, i.actual) for i in issues) == [
+        ("unknown_account_class", "9010", Decimal("-500.00")),
+        ("voucher_outside_fiscal_year", "Z1", Decimal("500.00")),
     ]

@@ -24,9 +24,13 @@ def _balance(tag: str, b: Balance) -> str:
     return f"{tag} {b.year_index} {b.account} {_amount(b.amount)}"
 
 
+def _objects(objects: list[tuple[str, str]]) -> str:
+    inner = " ".join(f"{dim} {_quote(obj)}" for dim, obj in objects)
+    return f"{{{inner}}}"
+
+
 def _trans(t: Transaction) -> str:
-    objects = " ".join(f"{dim} {_quote(obj)}" for dim, obj in t.objects)
-    parts = ["#TRANS", t.account, f"{{{objects}}}", _amount(t.amount)]
+    parts = ["#TRANS", t.account, _objects(t.objects), _amount(t.amount)]
     if t.date is not None or t.text is not None:
         parts.append(_date(t.date) if t.date else '""')
     if t.text is not None:
@@ -62,7 +66,7 @@ def render_sie(ledger: Ledger) -> str:
     lines += [_balance("#UB", b) for b in ledger.closing_balances]
     lines += [_balance("#RES", b) for b in ledger.results]
     lines += [
-        f"#PSALDO {p.year_index} {p.period} {p.account} {{}} {_amount(p.amount)}"
+        f"#PSALDO {p.year_index} {p.period} {p.account} {_objects(p.objects)} {_amount(p.amount)}"
         for p in ledger.period_balances
     ]
     for v in ledger.vouchers:
