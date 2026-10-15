@@ -363,3 +363,23 @@ def test_eval_scores_flags_against_facit(demo: tuple[Ledger, Facit], tmp_path: P
     # Offline everything is "avvikelse", so nothing is found; the plumbing still runs.
     assert module.main(["--no-llm", "--out", str(tmp_path)]) == 1
     assert (tmp_path / "facit.json").exists()
+
+
+@pytest.mark.live
+def test_live_flagging_returns_valid_flags(demo: tuple[Ledger, Facit]) -> None:
+    """Real API call on three demo vouchers. Run with: uv run pytest -m live"""
+    settings = Settings()
+    if settings.anthropic_api_key is None:
+        pytest.skip("ANTHROPIC_API_KEY saknas")
+    ledger, facit = demo
+    a = {x.id: x for x in facit.anomalies}
+    rent = next(v.ref for v in ledger.vouchers if v.text.startswith("Hyra kontor 2025-03"))
+    refs = [a[1].voucher_refs[-1], a[6].voucher_refs[0], rent]
+    hits = [PrefilterHit(voucher_ref=r, accounts=[], reasons=["Livetest"]) for r in refs]
+    client = Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+
+    result = flag_vouchers(hits, ledger, client, model=settings.diligens_model)
+
+    assert result.failed_batches == 0 and result.calls >= 1
+    assert [f.voucher_ref for f in result.flags] == refs
+    assert all(f.rationale and not re.search(r"\d", f.rationale) for f in result.flags)

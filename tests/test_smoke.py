@@ -33,6 +33,13 @@ def test_settings_load_without_env(monkeypatch) -> None:  # type: ignore[no-unty
     assert settings.llm_enabled is False
 
 
+def test_blank_api_key_counts_as_missing(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  ")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.anthropic_api_key is None
+    assert settings.llm_enabled is False
+
+
 def test_flag_review_threshold() -> None:
     flag = Flag(
         voucher_ref="B2",

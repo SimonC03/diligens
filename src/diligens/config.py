@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     bolagsverket_client_id: SecretStr | None = None
     bolagsverket_client_secret: SecretStr | None = None
     bolagsverket_env: Literal["test", "prod"] = "test"
+
+    @field_validator(
+        "anthropic_api_key",
+        "scb_api_key",
+        "bolagsverket_client_id",
+        "bolagsverket_client_secret",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_missing(cls, value: object) -> object:
+        """`KEY=` in .env means not configured, not an empty secret."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def llm_enabled(self) -> bool:
