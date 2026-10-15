@@ -251,6 +251,15 @@ class Flag(BaseModel):
         return self.confidence < 0.7
 
 
+class FlaggingResult(BaseModel):
+    flags: list[Flag]
+    calls: int = Field(default=0, description="LLM requests, including retries")
+    failed_batches: int = Field(default=0, description="batches that fell back to review")
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+
+
 class DDQuestion(BaseModel):
     text: str = Field(description="Swedish question to the seller")
     voucher_refs: list[str] = Field(default_factory=list)
