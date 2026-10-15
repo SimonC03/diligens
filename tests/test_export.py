@@ -304,3 +304,20 @@ def test_memo_uses_computed_numbers_only(analysed: tuple[AnalysisResult, Path]) 
     for heading in ("## Sammanfattning", "## Normaliseringar", "## Frågor till säljaren"):
         assert heading in template
     assert result.memo  # the pipeline fills it in
+
+
+@pytest.mark.live
+def test_live_memo(analysed: tuple[AnalysisResult, Path]) -> None:
+    """Real API call that writes the memo. Run with: uv run pytest -m live"""
+    settings = Settings()
+    if settings.anthropic_api_key is None:
+        pytest.skip("ANTHROPIC_API_KEY saknas")
+    result, _ = analysed
+    client = Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+
+    memo = write_memo(result, client, model=settings.diligens_model)
+
+    allowed = {n for value in memo_facts(result).values() for n in _numbers(value)}
+    assert "## Sammanfattning" in memo and "{" not in memo
+    assert _numbers(memo) <= allowed
+    assert len(memo.split()) <= 450

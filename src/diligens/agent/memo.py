@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 MAX_WORDS = 450
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+_LIST_NUMBER = re.compile(r"^\s*\d+\.\s", re.MULTILINE)  # markdown list markers are not data
 _DASH = re.compile(r"(?<=\S)\s[-–—]\s")
 
 SYSTEM_PROMPT = """\
@@ -37,8 +38,9 @@ Högst en sida, ungefär trehundra ord. Professionell och saklig ton, korta meni
 
 Varje siffra, belopp, procentsats, datum, namn på bolaget och fråga ska skrivas som
 platshållare med nyckeln inom klammerparenteser, till exempel {ebitda}. Skriv aldrig
-siffror själv. Använd bara nycklar som finns i underlaget. Använd inte tankstreck som
-skiljetecken. Påstå inget som inte följer av underlaget.
+siffror själv. Använd bara nycklar som finns i underlaget. Använd punktlistor med
+bindestreck, inte numrerade listor. Använd inte tankstreck som skiljetecken. Påstå inget som
+inte följer av underlaget.
 """
 
 
@@ -81,9 +83,9 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
         ),
         "nettoskuld_datum": kpis.net_debt_month,
         "avstamning": (
-            "stämmer mot bokslutet utan differens"
+            "ingen differens mot bokslutet"
             if result.reconciliation.ok
-            else "visar differenser mot bokslutet som måste utredas"
+            else "differenser mot bokslutet som måste utredas"
         ),
         "antal_flaggor": str(len(result.flags)),
         "antal_granskning": str(len(bridge.review)),
@@ -143,7 +145,7 @@ def _template(facts: dict[str, str]) -> str:
         "",
         "## Underlagets kvalitet",
         "",
-        "Bokföringen {avstamning}. Av {antal_flaggor} flaggade poster kräver "
+        "Avstämningen av bokföringen visar {avstamning}. Av {antal_flaggor} flaggade poster kräver "
         "{antal_granskning} granskning, och {antal_fragor} frågor har tagits fram.",
         "",
         "## Frågor till säljaren",
@@ -161,9 +163,10 @@ def _check(facts: dict[str, str]) -> Callable[[_Memo], list[str]]:
             problems.append(
                 f"Okända nycklar: {', '.join(unknown)}. Använd bara underlagets nycklar."
             )
-        if re.search(r"\d", _PLACEHOLDER.sub("", text)):
+        prose = _LIST_NUMBER.sub("", _PLACEHOLDER.sub("", text))
+        if re.search(r"\d", prose):
             problems.append("Texten innehåller siffror. Skriv alla tal som platshållare.")
-        if _DASH.search(_PLACEHOLDER.sub("", text)):
+        if _DASH.search(prose):
             problems.append("Texten använder tankstreck som skiljetecken.")
         if "## Sammanfattning" not in text:
             problems.append("Rubriken ## Sammanfattning saknas.")
