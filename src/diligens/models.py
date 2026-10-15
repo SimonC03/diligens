@@ -311,3 +311,30 @@ class PlantedAnomaly(BaseModel):
 class Facit(BaseModel):
     seed: int
     anomalies: list[PlantedAnomaly]
+
+
+# ---------------------------------------------------------------- pipeline
+
+
+class AnalysisResult(BaseModel):
+    """Everything one run produces; what the CLI, the MCP server and the export read."""
+
+    source: str = Field(description="SIE file name")
+    company_name: str
+    org_nr: str
+    llm_used: bool
+    model: str | None = None
+    integrity_issues: list[IntegrityIssue]
+    mapping: Mapping
+    statements: Statements
+    kpis: KPIs
+    reconciliation: Reconciliation
+    prefilter_hits: list[PrefilterHit]
+    flagging: FlaggingResult
+    bridge: EbitdaBridge
+    questions: list[DDQuestion]
+
+    @property
+    def flags(self) -> list[Flag]:
+        """Flags with EBITDA adjustments filled in."""
+        return self.bridge.flags

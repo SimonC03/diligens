@@ -5,12 +5,14 @@ from typing import Literal
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_MODEL = "claude-sonnet-5-5"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     anthropic_api_key: SecretStr | None = None
-    diligens_model: str = "claude-sonnet-5-5"
+    diligens_model: str = DEFAULT_MODEL
 
     scb_api_key: SecretStr | None = None
 

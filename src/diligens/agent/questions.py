@@ -16,6 +16,7 @@ import pydantic
 from anthropic.types import OutputConfigParam
 from pydantic import BaseModel
 
+from diligens.config import DEFAULT_MODEL
 from diligens.formatting import format_tsek
 from diligens.models import DDQuestion, Flag, FlagCategory, Ledger
 
@@ -193,7 +194,7 @@ def dd_questions(
     flags: list[Flag],
     ledger: Ledger,
     client: anthropic.Anthropic | None,
-    model: str = "claude-sonnet-5-5",
+    model: str = DEFAULT_MODEL,
 ) -> list[DDQuestion]:
     """One question per (category, account) among non-normal flags, most material first."""
     groups = _groups(flags, ledger)

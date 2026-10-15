@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import pytest
 from anthropic import Anthropic
+from typer.testing import CliRunner
 
 from diligens.agent.flagging import flag_vouchers
 from diligens.agent.prefilter import prefilter
@@ -20,8 +21,11 @@ from diligens.analysis.bridge import ebitda_bridge
 from diligens.analysis.kpis import compute_kpis
 from diligens.analysis.mapping import map_accounts
 from diligens.analysis.statements import monthly_statements
+from diligens.cli import app
+from diligens.config import Settings
 from diligens.models import Facit, Flag, FlagCategory, Ledger, PrefilterHit
-from diligens.sie.generator import build_demo_company
+from diligens.pipeline import run_analysis
+from diligens.sie.generator import build_demo_company, generate_demo_company
 from diligens.sie.parser import parse_sie
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -288,3 +292,36 @@ def test_dd_questions_reference_account_voucher_and_amount(demo: tuple[Ledger, F
 
     fallback = dd_questions(flags, ledger, cast(Anthropic, FakeQuestionClient(never)))
     assert [q.text for q in fallback] == [q.text for q in offline]
+
+
+def test_no_llm_runs_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_client(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("--no-llm must not create an Anthropic client")
+
+    monkeypatch.setattr("anthropic.Anthropic", no_client)
+    sie = tmp_path / "demo_bolag.se"
+    generate_demo_company(42, sie)
+
+    result = CliRunner().invoke(app, ["analyze", str(sie), "--out", str(tmp_path), "--no-llm"])
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        "Demobolaget Konsult AB",
+        "Avstämning: OK",
+        "EBITDA LTM",
+        "Justerad EBITDA",
+        "Kräver granskning",
+        "DD-frågor",
+    ):
+        assert expected in result.output, expected
+
+    analysis = run_analysis(sie, use_llm=False)
+    assert not analysis.llm_used and analysis.reconciliation.ok
+    assert len(analysis.flags) == len(analysis.prefilter_hits) > 0
+    assert all(f.category == "avvikelse" and f.needs_review for f in analysis.flags)
+    assert analysis.bridge.adjusted == analysis.bridge.reported  # nothing confident offline
+    assert analysis.questions and all(q.voucher_refs for q in analysis.questions)
+
+    no_key = Settings(_env_file=None, anthropic_api_key=None)  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        run_analysis(sie, use_llm=True, settings=no_key)

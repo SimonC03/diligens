@@ -18,6 +18,7 @@ import pydantic
 from anthropic.types import OutputConfigParam, TextBlockParam
 from pydantic import BaseModel, Field
 
+from diligens.config import DEFAULT_MODEL
 from diligens.models import Flag, FlagCategory, FlaggingResult, Ledger, PrefilterHit, Voucher
 
 log = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ def flag_vouchers(
     hits: list[PrefilterHit],
     ledger: Ledger,
     client: anthropic.Anthropic | None,
-    model: str = "claude-sonnet-5-5",
+    model: str = DEFAULT_MODEL,
 ) -> FlaggingResult:
     """Classify prefilter hits. With `client=None` every hit becomes an "avvikelse" for review."""
     vouchers = {v.ref: v for v in ledger.vouchers}
