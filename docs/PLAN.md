@@ -50,10 +50,10 @@ Branch `m3-agent`. Modules: `agent/`, `scripts/eval_flags.py`.
 - [x] Adjusted EBITDA bridge uses only flags with confidence >= 0.7; the rest are listed
       as "Kräver granskning"
 - [x] DD question list: each question references account, voucher and amount
-- [ ] `scripts/eval_flags.py` compares flags to facit and prints recall and precision;
+- [x] `scripts/eval_flags.py` compares flags to facit and prints recall and precision;
       recall >= 5 of 6 planted anomalies
 - [x] `--no-llm` still runs end to end
-- [ ] Unit tests mock the Anthropic client; one `live` test runs the real call
+- [x] Unit tests mock the Anthropic client; one `live` test runs the real call
 
 ## M4 Excel export and memo
 

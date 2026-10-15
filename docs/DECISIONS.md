@@ -121,3 +121,14 @@ Format: `YYYY-MM-DD` decision, reason.
   is not moved in.
 - 2026-10-15 DD question amounts use the same basis as the bridge (net EBITDA lines) and
   the reference shows the months covered, so they reconcile with the bridge for the LTM.
+- 2026-10-15 Model for flagging and questions: `claude-haiku-5-5` (set in .env). The M3
+  eval holds on Haiku: two live runs on the demo both found 5 of 6 planted anomalies with
+  94 % precision (33 confident flags), in 1 to 2 requests and about 12k input and 6k output
+  tokens. The miss is the private car (#3): right category, confidence 0.6, so it lands in
+  review with a DD question, which is acceptable. The two false positives are the July
+  payroll runs with the holiday pay release, flagged as avvikelse (question, no adjustment).
+- 2026-10-15 Known instability: the owner company fee (#1) is classified agarrelaterad in
+  one run and narstaende in another. Both are accepted by the facit, but only agarrelaterad
+  adjusts EBITDA, so adjusted EBITDA can differ by the fee (540 TSEK LTM on the demo).
+  To revisit in M4: show confident narstaende items in the bridge sheet as "ej justerat,
+  att bedöma" so the advisor makes the call, rather than relying on the model's choice.
