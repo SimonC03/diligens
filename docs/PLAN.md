@@ -30,13 +30,13 @@ Branch `m1-sie`. Modules: `sie/parser.py`, `sie/generator.py`.
 
 Branch `m2-analysis`. Modules: `analysis/`.
 
-- [ ] BAS mapping per DOMAIN.md section 2; unmapped accounts returned explicitly
-- [ ] Monthly income statement and balance sheet per DOMAIN.md section 3
-- [ ] LTM, EBITDA, EBITDA margin, gross margin, revenue growth per DOMAIN.md section 4
-- [ ] Net working capital monthly and normal level (12 month average) per section 5
-- [ ] Net debt items per section 5
-- [ ] Reconciliation report: statements vs `#RES` and `#UB`, difference 0.00 on the demo file
-- [ ] All functions pure and covered by tests on the minimal fixture
+- [x] BAS mapping per DOMAIN.md section 2; unmapped accounts returned explicitly
+- [x] Monthly income statement and balance sheet per DOMAIN.md section 3
+- [x] LTM, EBITDA, EBITDA margin, gross margin, revenue growth per DOMAIN.md section 4
+- [x] Net working capital monthly and normal level (12 month average) per section 5
+- [x] Net debt items per section 5
+- [x] Reconciliation report: statements vs `#RES` and `#UB`, difference 0.00 on the demo file
+- [x] All functions pure and covered by tests on the minimal fixture
 
 ## M3 AI flagging and DD questions
 

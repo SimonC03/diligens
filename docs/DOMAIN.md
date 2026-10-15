@@ -98,10 +98,21 @@ counted in net debt not NWC; 2350 to 2359 long term bank loans in net debt.
 - NWC = Lager + Kundfordringar + Övriga kortfristiga fordringar minus Leverantörsskulder
   (excluding 2410, 2417) minus Moms minus Personalens skatter minus Upplupna kostnader
   minus Övriga kortfristiga skulder (excluding owner and group loans, flagged)
+  - In accounts: 1400 to 1799, 2400 to 2499 and 2600 to 2999, excluding tax and financing
+    on both sides: 1630 to 1649, 1660 to 1669, 1682, 1685, 2410, 2417, 2840, 2860 to 2869,
+    2893 and 2898
 - NWC normal level = average of the last 12 month end values
-- Net debt = interest bearing debt (2350 to 2359, 2410, 2417, leasing if booked) plus
-  tax debt (2500 to 2599) minus kassa och bank (1900 to 1999) minus kortfristiga
-  placeringar (1800 to 1899)
+- Net debt = interest bearing debt (2330 to 2359, 2410, 2417, 2840, leasing if booked) plus
+  tax debt net of the tax account and tax receivables (2500 to 2599 and 1630 to 1649) minus
+  kassa och bank (1900 to 1999) minus kortfristiga placeringar (1800 to 1899)
+- Each open fiscal year (result not closed to equity and no tax booked on 8900 to 8989):
+  add "Beräknad skatt <år> (ej bokförd)" = tax rate (20.6 %) x result before tax so far
+  (3000 to 8899), never below zero. Shown as its own line, marked as an assumption.
+- Debt and cash like items, in neither NWC nor net debt, listed for the advisor to assess:
+  group receivables 1660 to 1669, loan receivables 1682, receivables from owners and
+  related parties 1685, avsättningar 2200 to 2299, bond and convertible loans 2300 to 2329,
+  long term group and related party debt 2360 to 2399, short term group debt 2860 to 2869,
+  related persons 2893, unpaid dividend 2898
 
 ## 6. Normalization categories and planted anomalies
 
