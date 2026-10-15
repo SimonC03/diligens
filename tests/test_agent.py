@@ -3,6 +3,7 @@
 No test here calls the Anthropic API except the one marked `live`.
 """
 
+import importlib.util
 import re
 from collections.abc import Callable
 from decimal import Decimal
@@ -23,6 +24,7 @@ from diligens.analysis.mapping import map_accounts
 from diligens.analysis.statements import monthly_statements
 from diligens.cli import app
 from diligens.config import Settings
+from diligens.evaluation import score_flags
 from diligens.models import Facit, Flag, FlagCategory, Ledger, PrefilterHit
 from diligens.pipeline import run_analysis
 from diligens.sie.generator import build_demo_company, generate_demo_company
@@ -325,3 +327,39 @@ def test_no_llm_runs_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     no_key = Settings(_env_file=None, anthropic_api_key=None)  # type: ignore[call-arg]
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
         run_analysis(sie, use_llm=True, settings=no_key)
+
+
+def test_eval_scores_flags_against_facit(demo: tuple[Ledger, Facit], tmp_path: Path) -> None:
+    ledger, facit = demo
+    perfect = [
+        f
+        for anomaly in facit.anomalies
+        for f in _flags_on(ledger, anomaly.voucher_refs, anomaly.category, 0.9)
+    ]
+    report = score_flags(facit, perfect)
+    assert (report.found, report.total, report.precision) == (6, 6, 1.0)
+
+    rent = next(v.ref for v in ledger.vouchers if v.text.startswith("Hyra kontor 2025-03"))
+    a = {x.id: x for x in facit.anomalies}
+    mixed = (
+        _flags_on(ledger, a[1].voucher_refs, "narstaende", 0.8)  # also accepted for #1
+        + _flags_on(ledger, a[2].voucher_refs, "engangspost", 0.9)
+        + _flags_on(ledger, a[3].voucher_refs, "agarrelaterad", 0.9)
+        + _flags_on(ledger, a[4].voucher_refs, "periodisering", 0.5)  # too unsure to count
+        + _flags_on(ledger, a[5].voucher_refs, "engangspost", 0.9)
+        + _flags_on(ledger, a[6].voucher_refs, "engangspost", 0.9)
+        + _flags_on(ledger, [rent], "engangspost", 0.9)  # false positive
+    )
+    report = score_flags(facit, mixed)
+    assert report.found == 5 and not next(r for r in report.rows if r.id == 4).found
+    assert report.precision == pytest.approx(55 / 56)
+
+    script = importlib.util.spec_from_file_location(
+        "eval_flags", Path(__file__).parents[1] / "scripts" / "eval_flags.py"
+    )
+    assert script and script.loader
+    module = importlib.util.module_from_spec(script)
+    script.loader.exec_module(module)
+    # Offline everything is "avvikelse", so nothing is found; the plumbing still runs.
+    assert module.main(["--no-llm", "--out", str(tmp_path)]) == 1
+    assert (tmp_path / "facit.json").exists()
