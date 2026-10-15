@@ -42,16 +42,17 @@ Branch `m2-analysis`. Modules: `analysis/`.
 
 Branch `m3-agent`. Modules: `agent/`, `scripts/eval_flags.py`.
 
-- [ ] Flagging over vouchers in batches with schema `Flag` (category, rationale,
-      confidence, voucher ref) via tool use; Pydantic validation; retries on schema errors
-- [ ] Deterministic prefilters (large amounts, owner related counterparties, round
+- [x] Flagging over vouchers in batches with schema `Flag` (category, rationale,
+      confidence, voucher ref) via structured outputs; Pydantic validation; retries on
+      schema errors
+- [x] Deterministic prefilters (large amounts, owner related counterparties, round
       amounts, month end spikes) reduce what goes to the LLM; documented in DECISIONS.md
-- [ ] Adjusted EBITDA bridge uses only flags with confidence >= 0.7; the rest are listed
+- [x] Adjusted EBITDA bridge uses only flags with confidence >= 0.7; the rest are listed
       as "Kräver granskning"
-- [ ] DD question list: each question references account, voucher and amount
+- [x] DD question list: each question references account, voucher and amount
 - [ ] `scripts/eval_flags.py` compares flags to facit and prints recall and precision;
       recall >= 5 of 6 planted anomalies
-- [ ] `--no-llm` still runs end to end
+- [x] `--no-llm` still runs end to end
 - [ ] Unit tests mock the Anthropic client; one `live` test runs the real call
 
 ## M4 Excel export and memo

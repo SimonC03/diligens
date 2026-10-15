@@ -75,3 +75,26 @@ Format: `YYYY-MM-DD` decision, reason.
   (1630 to 1649) move to net debt next to 2500 to 2599. The rest of 1680 to 1689 (e.g.
   1684, 1689) stays in NWC as operating items. Reason: a loan to the owner must not
   inflate working capital, mirroring 2893 on the liability side.
+- 2026-10-15 LLM output uses structured outputs (`client.messages.parse` with a Pydantic
+  `output_format`) instead of forced tool use. Reason: Claude Sonnet 5.5 rejects forced
+  `tool_choice` with a 400; structured outputs give schema valid JSON directly. Business rules
+  are checked on top (every voucher once, no unknown refs, no digits in model text) and fed
+  back on retry, at most 3 attempts; a batch that still fails falls back to review.
+- 2026-10-15 The model never writes a number into the output. Flag account and amount come
+  from the voucher's largest EBITDA line; rationales and DD questions are rejected if they
+  contain digits, and code appends account, vouchers and TSEK to each question.
+- 2026-10-15 Prefilter rules on EBITDA accounts (3000 to 7699, 7900 to 7999), thresholds in
+  `agent/prefilter.py`: material amount (0.25 % of annualised revenue, at least 10 TSEK, and
+  3x the account median when the account has 6 or more vouchers), round amount (multiple of
+  5 TSEK from 25 TSEK), same account, amount and text in 6 or more months, owner related
+  account (5610 to 5699) or words (ägar, privat, familj, holding, närstående), month spike
+  (2x the mean of other months and at least half the materiality, vouchers outside 25 % of
+  the median), revenue within 5 days of year end above materiality or text naming a later
+  month, and any line on 3900 to 3999. Demo: 93 of 1 990 vouchers, all 56 planted ones.
+- 2026-10-15 EBITDA bridge per category: engångspost and ägarrelaterad add back the voucher's
+  net EBITDA lines (owner costs in full, market rate not estimated), periodisering moves the
+  item out of the period, närstående and avvikelse give a DD question only. Only flags with
+  confidence >= 0.7 dated inside the LTM window adjust; YTD is used when there is no LTM.
+- 2026-10-15 Batches of 50 vouchers, effort medium, system prompt plus the company's chart of
+  accounts cached as a prefix. Client data sent to the API is limited to the prefiltered
+  vouchers; real client use needs zero data retention or a local model (M7).
