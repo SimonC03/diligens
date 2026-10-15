@@ -33,6 +33,14 @@ BAS_LINES: tuple[tuple[int, int, str, StatementKind], ...] = (
 )
 
 
+def is_ebitda_account(account: str) -> bool:
+    """3000-7699 and 7900-7999: the accounts inside EBITDA (DOMAIN.md section 4)."""
+    if not (len(account) == 4 and account.isdigit()):
+        return False
+    number = int(account)
+    return 3000 <= number <= 7699 or 7900 <= number <= 7999
+
+
 def _line_for(account: str) -> tuple[str, StatementKind] | None:
     if not (len(account) == 4 and account.isdigit()):
         return None

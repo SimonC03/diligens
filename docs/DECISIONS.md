@@ -75,3 +75,60 @@ Format: `YYYY-MM-DD` decision, reason.
   (1630 to 1649) move to net debt next to 2500 to 2599. The rest of 1680 to 1689 (e.g.
   1684, 1689) stays in NWC as operating items. Reason: a loan to the owner must not
   inflate working capital, mirroring 2893 on the liability side.
+- 2026-10-15 LLM output uses structured outputs (`client.messages.create` with
+  `output_config.format` built by `anthropic.transform_schema` from a Pydantic model)
+  instead of forced tool use. The stop reason is checked before the JSON is validated, so
+  refusals and cut off answers are handled and every attempt's tokens are counted. Reason: Claude Sonnet 5.5 rejects forced
+  `tool_choice` with a 400; structured outputs give schema valid JSON directly. Business rules
+  are checked on top (every voucher once, no unknown refs, no digits in model text) and fed
+  back on retry, at most 3 attempts; a batch that still fails falls back to review.
+- 2026-10-15 The model never writes a number into the output. Flag account and amount come
+  from the voucher's largest EBITDA line; rationales and DD questions are rejected if they
+  contain digits, and code appends account, vouchers and TSEK to each question.
+- 2026-10-15 Prefilter rules on EBITDA accounts (3000 to 7699, 7900 to 7999), thresholds in
+  `agent/prefilter.py`: material amount (0.25 % of annualised revenue, at least 10 TSEK, and
+  3x the account median when the account has 6 or more vouchers), round amount (multiple of
+  5 TSEK from 25 TSEK), same account, amount and text in 6 or more months, owner related
+  account (5610 to 5699) or words (ägar, privat, familj, holding, närstående), month spike
+  (2x the mean of other months and at least half the materiality, vouchers outside 25 % of
+  the median), revenue within 5 days of year end above materiality or text naming a later
+  month, and any line on 3900 to 3999. Demo: 93 of 1 990 vouchers, all 56 planted ones.
+- 2026-10-15 EBITDA bridge per category: engångspost and ägarrelaterad add back the voucher's
+  net EBITDA lines (owner costs in full, market rate not estimated), periodisering moves the
+  item out of the period, närstående and avvikelse give a DD question only. Only flags with
+  confidence >= 0.7 dated inside the LTM window adjust; YTD is used when there is no LTM.
+- 2026-10-15 Batches of 50 vouchers, effort medium, system prompt plus the company's chart of
+  accounts cached as a prefix. Client data sent to the API is limited to the prefiltered
+  vouchers; real client use needs zero data retention or a local model (M7).
+- 2026-10-15 API errors: connection, rate limit, overload and server errors (after the SDK's
+  own retries) stop all further calls in the run and send the remaining items to review,
+  shown in the CLI; a rejected key, unknown model or rejected request stops the run with a
+  Swedish message. CLI exit codes: 0 done, 1 input or AI configuration error, 2 the
+  reconciliation differs.
+- 2026-10-15 A recurring series (same account, amount and normalised text in 6 or more
+  months) is classified once and the answer applied to every voucher in it. Demo: 93
+  prefilter hits become 19 items for the model.
+- 2026-10-15 The bridge only adds back vouchers with a single EBITDA account. A collective
+  voucher (payroll batch, daily sales journal) with a confident adjusting flag goes to
+  review, since adding it back whole would overstate EBITDA.
+- 2026-10-15 Owner related prefilter accounts: 5610-5619 (personbilar), 5670-5679 (båt,
+  flyg), 6070-6072 (representation), 7220-7229 (löner till företagsledare), 7240-7249
+  (styrelsearvoden); words also include förvaltning and invest; advisors can add names with
+  `--narstaende`. Cut-off covers fiscal year ends and the LTM end month, credit notes on
+  3000-3699 within 10 days after, and correction words (återför, kreditering, rättelse,
+  korrigering, makulering). Lines on 3900-3999 and 7970-7979 need a quarter of the
+  materiality. Known gap: an item booked just before the LTM window that belongs inside it
+  is not moved in.
+- 2026-10-15 DD question amounts use the same basis as the bridge (net EBITDA lines) and
+  the reference shows the months covered, so they reconcile with the bridge for the LTM.
+- 2026-10-15 Model for flagging and questions: `claude-haiku-5-5` (set in .env). The M3
+  eval holds on Haiku: two live runs on the demo both found 5 of 6 planted anomalies with
+  94 % precision (33 confident flags), in 1 to 2 requests and about 12k input and 6k output
+  tokens. The miss is the private car (#3): right category, confidence 0.6, so it lands in
+  review with a DD question, which is acceptable. The two false positives are the July
+  payroll runs with the holiday pay release, flagged as avvikelse (question, no adjustment).
+- 2026-10-15 Known instability: the owner company fee (#1) is classified agarrelaterad in
+  one run and narstaende in another. Both are accepted by the facit, but only agarrelaterad
+  adjusts EBITDA, so adjusted EBITDA can differ by the fee (540 TSEK LTM on the demo).
+  To revisit in M4: show confident narstaende items in the bridge sheet as "ej justerat,
+  att bedöma" so the advisor makes the call, rather than relying on the model's choice.

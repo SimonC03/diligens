@@ -221,6 +221,20 @@ class Reconciliation(BaseModel):
 
 # ---------------------------------------------------------------- flags (agent/)
 
+
+class PrefilterHit(BaseModel):
+    """A voucher the deterministic prefilter sends on for classification."""
+
+    voucher_ref: str
+    accounts: list[str] = Field(description="EBITDA accounts on the voucher that triggered")
+    reasons: list[str] = Field(description="Swedish, one per rule that matched")
+    series: str | None = Field(
+        default=None, description="key of a recurring series (account, amount, text) if any"
+    )
+
+
+REVIEW_CONFIDENCE = 0.7  # below this a flag goes to "Kräver granskning"
+
 FlagCategory = Literal[
     "engangspost", "agarrelaterad", "narstaende", "periodisering", "avvikelse", "normal"
 ]
@@ -239,7 +253,46 @@ class Flag(BaseModel):
 
     @property
     def needs_review(self) -> bool:
-        return self.confidence < 0.7
+        return self.confidence < REVIEW_CONFIDENCE
+
+
+class FlaggingResult(BaseModel):
+    flags: list[Flag]
+    calls: int = Field(default=0, description="LLM requests, including retries")
+    failed_batches: int = Field(default=0, description="batches that fell back to review")
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    error: str | None = Field(default=None, description="Swedish, set when the API was down")
+
+
+class BridgeItem(BaseModel):
+    category: FlagCategory
+    label: str = Field(description="Swedish")
+    accounts: list[str]
+    voucher_refs: list[str]
+    amount: Decimal = Field(description="positive increases EBITDA")
+    note: str | None = None
+    source_ref: str
+
+
+class EbitdaBridge(BaseModel):
+    """Reported to adjusted EBITDA. Only flags with confidence >= 0.7 adjust."""
+
+    basis: Literal["LTM", "YTD"] = Field(description="YTD when fewer than 12 months exist")
+    month: str = Field(description="last month of the period")
+    period: list[str] = Field(description="first and last month")
+    reported: Decimal
+    items: list[BridgeItem]
+    adjusted: Decimal
+    review: list[Flag] = Field(description="confidence below 0.7: Kräver granskning")
+    not_adjusted: list[Flag] = Field(
+        description="confident narstaende and avvikelse flags: questions, no adjustment"
+    )
+    outside_period: list[Flag] = Field(
+        default_factory=list, description="confident adjusting flags dated outside the period"
+    )
+    flags: list[Flag] = Field(description="all flags with ebitda_adjustment filled in")
 
 
 class DDQuestion(BaseModel):
@@ -267,3 +320,30 @@ class PlantedAnomaly(BaseModel):
 class Facit(BaseModel):
     seed: int
     anomalies: list[PlantedAnomaly]
+
+
+# ---------------------------------------------------------------- pipeline
+
+
+class AnalysisResult(BaseModel):
+    """Everything one run produces; what the CLI, the MCP server and the export read."""
+
+    source: str = Field(description="SIE file name")
+    company_name: str
+    org_nr: str
+    llm_used: bool
+    model: str | None = None
+    integrity_issues: list[IntegrityIssue]
+    mapping: Mapping
+    statements: Statements
+    kpis: KPIs
+    reconciliation: Reconciliation
+    prefilter_hits: list[PrefilterHit]
+    flagging: FlaggingResult
+    bridge: EbitdaBridge
+    questions: list[DDQuestion]
+
+    @property
+    def flags(self) -> list[Flag]:
+        """Flags with EBITDA adjustments filled in."""
+        return self.bridge.flags
