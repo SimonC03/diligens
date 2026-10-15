@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 from typer.testing import CliRunner
 
+from diligens.agent.memo import memo_facts, write_memo
 from diligens.cli import app
 from diligens.config import Settings
 from diligens.export.excel import SHEETS, export_dd_pack
@@ -246,3 +247,60 @@ def test_cli_writes_workbook_that_opens_with_formulas(tmp_path: Path) -> None:
         if isinstance(cell.value, str) and cell.value.startswith("=")
     )
     assert formulas > 100
+
+
+_NUMBER = re.compile(r"\d[\d\s]*(?:,\d+)?")
+
+
+def _numbers(text: str) -> set[str]:
+    return {" ".join(n.split()) for n in _NUMBER.findall(text)}
+
+
+class MemoMessages:
+    def __init__(self, replies: list[str]) -> None:
+        self.replies = replies
+        self.calls: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        text = self.replies[min(len(self.calls), len(self.replies)) - 1]
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=json.dumps({"markdown": text}))],
+            stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=10, output_tokens=10, cache_read_input_tokens=0),
+        )
+
+
+def test_memo_uses_computed_numbers_only(analysed: tuple[AnalysisResult, Path]) -> None:
+    result, _ = analysed
+    facts = memo_facts(result)
+    allowed = {n for value in facts.values() for n in _numbers(value)}
+    assert facts["ebitda"].endswith("TSEK") and "," in facts["ebitda"]
+
+    invented = "## Sammanfattning\n\nEBITDA uppgick till 5 300 TSEK, en stark nivå."
+    good = (
+        "## Sammanfattning\n\n{bolag} redovisar en nettoomsättning om {omsattning} och en "
+        "EBITDA om {ebitda} ({bas}). Justerad EBITDA uppgår till {justerad_ebitda}.\n\n"
+        "## Frågor till säljaren\n\n- {fraga_1}\n- {fraga_2}"
+    )
+    messages = MemoMessages([invented, good])
+    memo = write_memo(result, cast(Anthropic, SimpleNamespace(messages=messages)), model="x")
+
+    assert len(messages.calls) == 2
+    assert "siffror" in messages.calls[1]["messages"][0]["content"]
+    assert facts["ebitda"] in memo and facts["justerad_ebitda"] in memo
+    assert "{" not in memo
+    assert _numbers(memo) <= allowed, _numbers(memo) - allowed
+
+    # Unknown placeholders never get through; after the retries the template is used.
+    unknown = MemoMessages(["## Sammanfattning\n\nMarginalen är {okand_nyckel}."])
+    fallback = write_memo(result, cast(Anthropic, SimpleNamespace(messages=unknown)), model="x")
+    template = write_memo(result, None)
+    assert fallback == template and len(unknown.calls) == 3
+
+    for text in (memo, template):
+        assert len(text.split()) <= 450  # one page
+        assert _numbers(text) <= allowed, _numbers(text) - allowed
+    for heading in ("## Sammanfattning", "## Normaliseringar", "## Frågor till säljaren"):
+        assert heading in template
+    assert result.memo  # the pipeline fills it in
