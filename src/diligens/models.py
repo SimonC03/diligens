@@ -221,6 +221,15 @@ class Reconciliation(BaseModel):
 
 # ---------------------------------------------------------------- flags (agent/)
 
+
+class PrefilterHit(BaseModel):
+    """A voucher the deterministic prefilter sends on for classification."""
+
+    voucher_ref: str
+    accounts: list[str] = Field(description="EBITDA accounts on the voucher that triggered")
+    reasons: list[str] = Field(description="Swedish, one per rule that matched")
+
+
 FlagCategory = Literal[
     "engangspost", "agarrelaterad", "narstaende", "periodisering", "avvikelse", "normal"
 ]
