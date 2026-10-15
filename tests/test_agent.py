@@ -15,6 +15,7 @@ from anthropic import Anthropic
 
 from diligens.agent.flagging import flag_vouchers
 from diligens.agent.prefilter import prefilter
+from diligens.agent.questions import dd_questions
 from diligens.analysis.bridge import ebitda_bridge
 from diligens.analysis.kpis import compute_kpis
 from diligens.analysis.mapping import map_accounts
@@ -89,6 +90,26 @@ class FakeMessages:
 class FakeClient:
     def __init__(self, script: Callable[[int, list[str]], dict[str, Any]]) -> None:
         self.messages = FakeMessages(script)
+
+
+class FakeQuestionMessages(FakeMessages):
+    """Like FakeMessages but reads the question group ids from the request."""
+
+    def parse(self, **kwargs: Any) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        ids = re.findall(r'"id": "(\w+)"', kwargs["messages"][0]["content"])
+        reply = self.script(len(self.calls), ids)
+        parsed = kwargs["output_format"].model_validate(reply["output"])
+        return SimpleNamespace(
+            parsed_output=parsed,
+            stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=10, output_tokens=10, cache_read_input_tokens=0),
+        )
+
+
+class FakeQuestionClient:
+    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]]) -> None:
+        self.messages = FakeQuestionMessages(script)
 
 
 def _all_normal(refs: list[str], text: str = "Löpande kostnad utan avvikelse.") -> dict[str, Any]:
@@ -223,3 +244,47 @@ def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
         Decimal("10000.00"),
         Decimal("50000.00"),
     )
+
+
+def test_dd_questions_reference_account_voucher_and_amount(demo: tuple[Ledger, Facit]) -> None:
+    ledger, facit = demo
+    a = {x.id: x for x in facit.anomalies}
+    rent = next(v.ref for v in ledger.vouchers if v.text.startswith("Hyra kontor 2025-03"))
+    flags = (
+        _flags_on(ledger, a[1].voucher_refs, "agarrelaterad", 0.9)
+        + _flags_on(ledger, a[4].voucher_refs, "periodisering", 0.85)
+        + _flags_on(ledger, a[3].voucher_refs, "agarrelaterad", 0.6)
+        + _flags_on(ledger, [rent], "normal", 0.95)  # no question for normal items
+    )
+
+    def script(call: int, ids: list[str]) -> dict[str, Any]:
+        questions = [{"id": i, "text": "Vad avser posterna och återkommer de?"} for i in ids]
+        if call == 1:
+            questions[0]["text"] = "Vad avser de 45 000 kr per månad?"  # digits: rejected
+        return {"output": {"questions": questions}}
+
+    client = FakeQuestionClient(script)
+    questions = dd_questions(flags, ledger, cast(Anthropic, client), model="claude-test")
+
+    assert len(client.messages.calls) == 2
+    assert "siffror" in client.messages.calls[1]["messages"][0]["content"]
+    assert len(questions) == 3  # owner fee (6550), car (5615), early invoice (3041)
+    owner = next(q for q in questions if q.accounts == ["6550"])
+    assert owner.voucher_refs == a[1].voucher_refs
+    assert owner.amount == Decimal("1080000.00")
+    assert owner.text.startswith("Vad avser posterna och återkommer de?")
+    assert "konto 6550" in owner.text and "1 080,0 TSEK" in owner.text
+    for q in questions:
+        assert q.voucher_refs and q.accounts and q.amount is not None
+        question_part = q.text.split(" (konto")[0]
+        assert not re.search(r"\d", question_part)
+
+    offline = dd_questions(flags, ledger, None)
+    assert [q.accounts for q in offline] == [q.accounts for q in questions]
+    assert all(q.text.split(" (konto")[0].endswith("?") for q in offline)
+
+    def never(call: int, ids: list[str]) -> dict[str, Any]:
+        return {"output": {"questions": []}}
+
+    fallback = dd_questions(flags, ledger, cast(Anthropic, FakeQuestionClient(never)))
+    assert [q.text for q in fallback] == [q.text for q in offline]
