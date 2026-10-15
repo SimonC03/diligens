@@ -5,6 +5,8 @@ No test here calls the Anthropic API except the one marked `live`.
 
 import re
 from collections.abc import Callable
+from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -13,10 +15,15 @@ from anthropic import Anthropic
 
 from diligens.agent.flagging import flag_vouchers
 from diligens.agent.prefilter import prefilter
+from diligens.analysis.bridge import ebitda_bridge
+from diligens.analysis.kpis import compute_kpis
 from diligens.analysis.mapping import map_accounts
 from diligens.analysis.statements import monthly_statements
-from diligens.models import Facit, Ledger, PrefilterHit
+from diligens.models import Facit, Flag, FlagCategory, Ledger, PrefilterHit
 from diligens.sie.generator import build_demo_company
+from diligens.sie.parser import parse_sie
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(scope="module")
@@ -139,3 +146,80 @@ def test_flagging_batches_validates_and_retries(demo: tuple[Ledger, Facit]) -> N
     assert offline.calls == 0
     assert all(f.category == "avvikelse" and f.needs_review for f in offline.flags)
     assert "Testregel" in offline.flags[0].rationale
+
+
+def _flags_on(
+    ledger: Ledger, refs: list[str], category: FlagCategory, confidence: float
+) -> list[Flag]:
+    by_ref = {v.ref: v for v in ledger.vouchers}
+    out = []
+    for ref in refs:
+        main = max(
+            (t for t in by_ref[ref].transactions if t.account[0] in "34567"),
+            key=lambda t: abs(t.amount),
+        )
+        out.append(
+            Flag(
+                voucher_ref=ref,
+                account=main.account,
+                amount=main.amount,
+                category=category,
+                rationale="Test.",
+                confidence=confidence,
+            )
+        )
+    return out
+
+
+def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
+    ledger, facit = demo
+    a = {x.id: x for x in facit.anomalies}
+    kpis = compute_kpis(monthly_statements(ledger, map_accounts(ledger)))
+    rent = next(v.ref for v in ledger.vouchers if v.text.startswith("Hyra kontor 2025-03"))
+    stray = next(v.ref for v in ledger.vouchers if v.text.startswith("Annonsering"))
+    flags = (
+        _flags_on(ledger, a[1].voucher_refs, "agarrelaterad", 0.9)  # 12 of 24 in LTM
+        + _flags_on(ledger, a[2].voucher_refs, "engangspost", 0.95)
+        + _flags_on(ledger, a[3].voucher_refs, "agarrelaterad", 0.6)  # below threshold
+        + _flags_on(ledger, a[4].voucher_refs, "periodisering", 0.85)
+        + _flags_on(ledger, a[5].voucher_refs, "engangspost", 0.9)  # 2024, outside LTM
+        + _flags_on(ledger, a[6].voucher_refs, "engangspost", 0.8)
+        + _flags_on(ledger, [stray], "narstaende", 0.9)  # question, no adjustment
+        + _flags_on(ledger, [rent], "normal", 0.95)
+    )
+
+    bridge = ebitda_bridge(kpis, ledger, flags)
+
+    assert bridge.basis == "LTM" and bridge.month == "2025-12"
+    assert bridge.reported == kpis.ltm["ebitda"].values["2025-12"]
+    by_cat = {(i.category, i.accounts[0]): i for i in bridge.items}
+    assert by_cat[("agarrelaterad", "6550")].amount == Decimal("540000.00")
+    assert len(by_cat[("agarrelaterad", "6550")].voucher_refs) == 12
+    assert "marknadsmässig" in (by_cat[("agarrelaterad", "6550")].note or "")
+    assert sum(i.amount for i in bridge.items if i.category == "engangspost") == Decimal(
+        "530000.00"
+    )  # move 380 + recruitment 150; the 2024 insurance payout is outside LTM
+    assert by_cat[("periodisering", "3041")].amount == Decimal("-600000.00")
+    assert all(i.source_ref and i.voucher_refs for i in bridge.items)
+    assert bridge.adjusted == bridge.reported + Decimal("470000.00")
+    assert bridge.adjusted == bridge.reported + sum(i.amount for i in bridge.items)
+
+    assert {f.voucher_ref for f in bridge.review} == set(a[3].voucher_refs)
+    assert [f.voucher_ref for f in bridge.not_adjusted] == [stray]
+    adjusted = {f.voucher_ref: f.ebitda_adjustment for f in bridge.flags}
+    assert adjusted[a[1].voucher_refs[-1]] == Decimal("45000.00")
+    assert adjusted[a[1].voucher_refs[0]] == 0  # January 2024, outside LTM
+    assert adjusted[a[3].voucher_refs[-1]] == 0  # review, not in the bridge
+
+    # Fewer than 12 months: the bridge falls back to year to date.
+    minimal = parse_sie(FIXTURES / "minimal.se")
+    small = ebitda_bridge(
+        compute_kpis(monthly_statements(minimal, map_accounts(minimal))),
+        minimal,
+        _flags_on(minimal, ["B2"], "engangspost", 0.9),
+    )
+    assert (small.basis, small.reported, small.adjusted) == (
+        "YTD",
+        Decimal("10000.00"),
+        Decimal("50000.00"),
+    )
