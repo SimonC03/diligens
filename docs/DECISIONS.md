@@ -132,3 +132,21 @@ Format: `YYYY-MM-DD` decision, reason.
   adjusts EBITDA, so adjusted EBITDA can differ by the fee (540 TSEK LTM on the demo).
   To revisit in M4: show confident narstaende items in the bridge sheet as "ej justerat,
   att bedöma" so the advisor makes the call, rather than relying on the model's choice.
+- 2026-10-15 Excel values are written in TSEK as unrounded Decimals (SEK / 1000) with the
+  number format `#,##0.0`, which Swedish Excel shows with space thousands and decimal comma.
+  Formulas therefore compute exactly; rounding is display only. The reconciliation sheet
+  stays in SEK with two decimals so differences of öre are visible.
+- 2026-10-15 Excel signs: income statement with revenue positive and costs negative, so
+  subtotals are plain sums; balance sheet with assets, equity and liabilities positive and a
+  Differens row that must be zero. Working capital keeps raw signs (assets positive,
+  liabilities negative) so its total is the plain sum.
+- 2026-10-15 The bridge sheet lists every candidate with an Inkludera column (1/0). Confident
+  adjustments start at 1; confident related party items and low confidence items of an
+  adjusting category start at 0. Justerad EBITDA = reported + SUMPRODUCT(amount, include), so
+  the advisor decides in Excel and the model's choice is a proposal. This also neutralises
+  the agarrelaterad/narstaende instability seen in the M3 eval.
+- 2026-10-15 Memo: code builds named facts with formatted values, the model writes Swedish
+  markdown with {placeholders} only, and code fills in the values. Text with digits outside
+  placeholders (markdown list numbers excepted), unknown keys, dashes or more than 450 words
+  is rejected and retried; a template with the same facts is used offline and on failure.
+  Demo run with Haiku: memo accepted on the first attempt, whole analyze run 35 seconds.
