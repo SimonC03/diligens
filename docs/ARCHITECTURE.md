@@ -49,7 +49,9 @@ def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge
 
 
 # agent/
-def prefilter(ledger: Ledger, statements: Statements) -> list[PrefilterHit]: ...
+def prefilter(
+    ledger: Ledger, statements: Statements, related_parties: Sequence[str] = ()
+) -> list[PrefilterHit]: ...
 def flag_vouchers(
     hits: list[PrefilterHit], ledger: Ledger, client: Anthropic | None, model: str
 ) -> FlaggingResult: ...
@@ -65,7 +67,11 @@ def export_dd_pack(result: AnalysisResult, out_dir: Path) -> Path: ...
 
 # pipeline.py
 def run_analysis(
-    sie_path: Path, use_llm: bool, client: Anthropic | None = None, settings: Settings | None = None
+    sie_path: Path,
+    use_llm: bool,
+    client: Anthropic | None = None,
+    settings: Settings | None = None,
+    related_parties: Sequence[str] = (),
 ) -> AnalysisResult: ...
 ```
 

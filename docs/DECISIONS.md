@@ -75,8 +75,10 @@ Format: `YYYY-MM-DD` decision, reason.
   (1630 to 1649) move to net debt next to 2500 to 2599. The rest of 1680 to 1689 (e.g.
   1684, 1689) stays in NWC as operating items. Reason: a loan to the owner must not
   inflate working capital, mirroring 2893 on the liability side.
-- 2026-10-15 LLM output uses structured outputs (`client.messages.parse` with a Pydantic
-  `output_format`) instead of forced tool use. Reason: Claude Sonnet 5.5 rejects forced
+- 2026-10-15 LLM output uses structured outputs (`client.messages.create` with
+  `output_config.format` built by `anthropic.transform_schema` from a Pydantic model)
+  instead of forced tool use. The stop reason is checked before the JSON is validated, so
+  refusals and cut off answers are handled and every attempt's tokens are counted. Reason: Claude Sonnet 5.5 rejects forced
   `tool_choice` with a 400; structured outputs give schema valid JSON directly. Business rules
   are checked on top (every voucher once, no unknown refs, no digits in model text) and fed
   back on retry, at most 3 attempts; a batch that still fails falls back to review.
@@ -98,3 +100,24 @@ Format: `YYYY-MM-DD` decision, reason.
 - 2026-10-15 Batches of 50 vouchers, effort medium, system prompt plus the company's chart of
   accounts cached as a prefix. Client data sent to the API is limited to the prefiltered
   vouchers; real client use needs zero data retention or a local model (M7).
+- 2026-10-15 API errors: connection, rate limit, overload and server errors (after the SDK's
+  own retries) stop all further calls in the run and send the remaining items to review,
+  shown in the CLI; a rejected key, unknown model or rejected request stops the run with a
+  Swedish message. CLI exit codes: 0 done, 1 input or AI configuration error, 2 the
+  reconciliation differs.
+- 2026-10-15 A recurring series (same account, amount and normalised text in 6 or more
+  months) is classified once and the answer applied to every voucher in it. Demo: 93
+  prefilter hits become 19 items for the model.
+- 2026-10-15 The bridge only adds back vouchers with a single EBITDA account. A collective
+  voucher (payroll batch, daily sales journal) with a confident adjusting flag goes to
+  review, since adding it back whole would overstate EBITDA.
+- 2026-10-15 Owner related prefilter accounts: 5610-5619 (personbilar), 5670-5679 (båt,
+  flyg), 6070-6072 (representation), 7220-7229 (löner till företagsledare), 7240-7249
+  (styrelsearvoden); words also include förvaltning and invest; advisors can add names with
+  `--narstaende`. Cut-off covers fiscal year ends and the LTM end month, credit notes on
+  3000-3699 within 10 days after, and correction words (återför, kreditering, rättelse,
+  korrigering, makulering). Lines on 3900-3999 and 7970-7979 need a quarter of the
+  materiality. Known gap: an item booked just before the LTM window that belongs inside it
+  is not moved in.
+- 2026-10-15 DD question amounts use the same basis as the bridge (net EBITDA lines) and
+  the reference shows the months covered, so they reconcile with the bridge for the LTM.
