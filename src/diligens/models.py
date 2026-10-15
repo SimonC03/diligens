@@ -228,7 +228,12 @@ class PrefilterHit(BaseModel):
     voucher_ref: str
     accounts: list[str] = Field(description="EBITDA accounts on the voucher that triggered")
     reasons: list[str] = Field(description="Swedish, one per rule that matched")
+    series: str | None = Field(
+        default=None, description="key of a recurring series (account, amount, text) if any"
+    )
 
+
+REVIEW_CONFIDENCE = 0.7  # below this a flag goes to "Kräver granskning"
 
 FlagCategory = Literal[
     "engangspost", "agarrelaterad", "narstaende", "periodisering", "avvikelse", "normal"
@@ -248,7 +253,7 @@ class Flag(BaseModel):
 
     @property
     def needs_review(self) -> bool:
-        return self.confidence < 0.7
+        return self.confidence < REVIEW_CONFIDENCE
 
 
 class FlaggingResult(BaseModel):
@@ -258,6 +263,7 @@ class FlaggingResult(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
+    error: str | None = Field(default=None, description="Swedish, set when the API was down")
 
 
 class BridgeItem(BaseModel):
@@ -282,6 +288,9 @@ class EbitdaBridge(BaseModel):
     review: list[Flag] = Field(description="confidence below 0.7: Kräver granskning")
     not_adjusted: list[Flag] = Field(
         description="confident narstaende and avvikelse flags: questions, no adjustment"
+    )
+    outside_period: list[Flag] = Field(
+        default_factory=list, description="confident adjusting flags dated outside the period"
     )
     flags: list[Flag] = Field(description="all flags with ebitda_adjustment filled in")
 

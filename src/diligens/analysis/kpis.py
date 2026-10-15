@@ -138,7 +138,7 @@ def _with_margins(series: dict[str, KpiSeries], months: list[str]) -> dict[str, 
     revenue = series["nettoomsattning"].values
     for key, label, base in (
         ("bruttomarginal", "Bruttomarginal", "bruttoresultat"),
-        ("ebitda_marginal", "EBITDA marginal", "ebitda"),
+        ("ebitda_marginal", "EBITDA-marginal", "ebitda"),
     ):
         series[key] = KpiSeries(
             name=label,

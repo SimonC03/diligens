@@ -3,7 +3,9 @@
 No test here calls the Anthropic API except the one marked `live`.
 """
 
+import datetime as dt
 import importlib.util
+import json
 import re
 from collections.abc import Callable
 from decimal import Decimal
@@ -11,10 +13,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import anthropic
+import httpx2
 import pytest
 from anthropic import Anthropic
 from typer.testing import CliRunner
 
+from diligens.agent._llm import LlmError
 from diligens.agent.flagging import flag_vouchers
 from diligens.agent.prefilter import prefilter
 from diligens.agent.questions import dd_questions
@@ -25,7 +30,16 @@ from diligens.analysis.statements import monthly_statements
 from diligens.cli import app
 from diligens.config import Settings
 from diligens.evaluation import score_flags
-from diligens.models import Facit, Flag, FlagCategory, Ledger, PrefilterHit
+from diligens.models import (
+    Facit,
+    FiscalYear,
+    Flag,
+    FlagCategory,
+    Ledger,
+    PrefilterHit,
+    Transaction,
+    Voucher,
+)
 from diligens.pipeline import run_analysis
 from diligens.sie.generator import build_demo_company, generate_demo_company
 from diligens.sie.parser import parse_sie
@@ -67,55 +81,53 @@ def test_prefilter_catches_planted_anomalies_and_reduces(demo: tuple[Ledger, Fac
     again = prefilter(ledger, monthly_statements(ledger, map_accounts(ledger)))
     assert again == hits
 
+    # The monthly owner fee is one recurring series, sent to the LLM once.
+    owner = next(a for a in facit.anomalies if a.id == 1).voucher_refs
+    assert len({by_ref[r].series for r in owner}) == 1 and by_ref[owner[0]].series
+
+    # Names the advisor knows to be in the owner's sphere count as owner related.
+    recruitment = next(a for a in facit.anomalies if a.id == 6).voucher_refs[0]
+    named = prefilter(
+        ledger,
+        monthly_statements(ledger, map_accounts(ledger)),
+        related_parties=["Bemanningsbolaget"],
+    )
+    reasons_named = next(h for h in named if h.voucher_ref == recruitment).reasons
+    assert "Ägarrelaterat konto eller text" in reasons_named
+    assert "Ägarrelaterat konto eller text" not in by_ref[recruitment].reasons
+
 
 class FakeMessages:
-    """Stands in for client.messages. `script` decides each reply from the refs it gets."""
+    """Stands in for client.messages.create. `script` decides each reply from the keys
+    (voucher refs or question ids) found in the request: a dict to return as JSON, raw text,
+    a stop reason, or an exception to raise."""
 
-    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]]) -> None:
+    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]], key: str) -> None:
         self.script = script
+        self.key = re.compile(rf'"{key}": "(\w+)"')
         self.calls: list[dict[str, Any]] = []
 
-    def parse(self, **kwargs: Any) -> SimpleNamespace:
+    def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
-        content = kwargs["messages"][0]["content"]
-        refs = re.findall(r'"ref": "(\w+)"', content)
-        reply = self.script(len(self.calls), refs)
-        parsed = kwargs["output_format"].model_validate(reply["output"])
+        keys = self.key.findall(kwargs["messages"][0]["content"])
+        reply = self.script(len(self.calls), keys)
+        if "raise" in reply:
+            raise reply["raise"]
+        output = reply.get("output", "")
+        text = output if isinstance(output, str) else json.dumps(output)
         return SimpleNamespace(
-            parsed_output=parsed,
+            content=[SimpleNamespace(type="text", text=text)],
             stop_reason=reply.get("stop_reason", "end_turn"),
-            usage=SimpleNamespace(
-                input_tokens=100,
-                output_tokens=50,
-                cache_read_input_tokens=80,
-                cache_creation_input_tokens=0,
-            ),
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50, cache_read_input_tokens=80),
         )
 
 
 class FakeClient:
-    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]]) -> None:
-        self.messages = FakeMessages(script)
+    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]], key: str = "ref"):
+        self.messages = FakeMessages(script, key)
 
 
-class FakeQuestionMessages(FakeMessages):
-    """Like FakeMessages but reads the question group ids from the request."""
-
-    def parse(self, **kwargs: Any) -> SimpleNamespace:
-        self.calls.append(kwargs)
-        ids = re.findall(r'"id": "(\w+)"', kwargs["messages"][0]["content"])
-        reply = self.script(len(self.calls), ids)
-        parsed = kwargs["output_format"].model_validate(reply["output"])
-        return SimpleNamespace(
-            parsed_output=parsed,
-            stop_reason="end_turn",
-            usage=SimpleNamespace(input_tokens=10, output_tokens=10, cache_read_input_tokens=0),
-        )
-
-
-class FakeQuestionClient:
-    def __init__(self, script: Callable[[int, list[str]], dict[str, Any]]) -> None:
-        self.messages = FakeQuestionMessages(script)
+_REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 
 
 def _all_normal(refs: list[str], text: str = "Löpande kostnad utan avvikelse.") -> dict[str, Any]:
@@ -126,7 +138,7 @@ def _all_normal(refs: list[str], text: str = "Löpande kostnad utan avvikelse.")
 
 
 def test_flagging_batches_validates_and_retries(demo: tuple[Ledger, Facit]) -> None:
-    ledger, _ = demo
+    ledger, facit = demo
     hits = [
         PrefilterHit(voucher_ref=v.ref, accounts=["3041"], reasons=["Testregel"])
         for v in ledger.vouchers
@@ -136,25 +148,29 @@ def test_flagging_batches_validates_and_retries(demo: tuple[Ledger, Facit]) -> N
     def script(call: int, refs: list[str]) -> dict[str, Any]:
         if call == 1:  # first batch: one voucher missing
             return _all_normal(refs[1:])
-        if call == 3:  # second batch: a rationale with digits is a made up number
+        if call == 3:  # second batch: not JSON at all
+            return {"output": "Här är min bedömning ..."}
+        if call == 4:  # then a rationale with digits, i.e. a made up number
             return _all_normal(refs, "Fakturan på 125 000 kr är normal.")
-        if call >= 5:  # third batch never gets it right
-            return {"output": {"flags": []}, "stop_reason": "refusal"}
+        if call == 6:  # third batch: refusal, no point retrying
+            return {"output": "", "stop_reason": "refusal"}
         return _all_normal(refs)
 
     client = FakeClient(script)
     result = flag_vouchers(hits, ledger, cast(Anthropic, client), model="claude-test")
 
     calls = client.messages.calls
-    assert len(calls) == 2 + 2 + 3  # retry, retry, two retries then fallback
+    assert len(calls) == 2 + 3 + 1
     first = calls[0]
     assert first["model"] == "claude-test"
-    assert first["output_config"] == {"effort": "medium"}
+    assert first["output_config"]["effort"] == "medium"
+    assert first["output_config"]["format"]["type"] == "json_schema"
     assert first["system"][-1]["cache_control"] == {"type": "ephemeral"}
     assert "6550 Konsultarvoden" in first["system"][-1]["text"]  # chart of accounts
     assert len(re.findall(r'"ref": ', first["messages"][0]["content"])) == 50
     assert "saknas" in calls[1]["messages"][0]["content"]  # error fed back on retry
-    assert "siffror" in calls[3]["messages"][0]["content"]
+    assert "schemat" in calls[3]["messages"][0]["content"]
+    assert "siffror" in calls[4]["messages"][0]["content"]
 
     flags = {f.voucher_ref: f for f in result.flags}
     assert len(result.flags) == 120 and set(flags) == {h.voucher_ref for h in hits}
@@ -162,12 +178,61 @@ def test_flagging_batches_validates_and_retries(demo: tuple[Ledger, Facit]) -> N
     for h in hits[100:]:  # third batch fell back to review
         assert flags[h.voucher_ref].category == "avvikelse"
         assert flags[h.voucher_ref].needs_review
-    assert result.failed_batches == 1 and result.calls == 7
+    assert result.failed_batches == 1 and result.calls == 6
+    assert result.input_tokens == 600 and result.cache_read_tokens == 480
 
     # Account and amount come from the voucher, never from the model.
     voucher = next(v for v in ledger.vouchers if v.ref == hits[0].voucher_ref)
     revenue = next(t for t in voucher.transactions if t.account == "3041")
     assert (flags[voucher.ref].account, flags[voucher.ref].amount) == ("3041", revenue.amount)
+
+    # A recurring series is sent once and its answer applied to every member.
+    owner = next(a for a in facit.anomalies if a.id == 1).voucher_refs
+    series_hits = [
+        PrefilterHit(voucher_ref=r, accounts=["6550"], reasons=["Serie"], series="6550|45000")
+        for r in owner
+    ]
+
+    def owner_script(call: int, refs: list[str]) -> dict[str, Any]:
+        flags = [
+            {
+                "voucher_ref": r,
+                "category": "agarrelaterad",
+                "rationale": "Arvode till ägarens bolag.",
+                "confidence": 0.9,
+            }
+            for r in refs
+        ]
+        return {"output": {"flags": flags}}
+
+    series_client = FakeClient(owner_script)
+    series = flag_vouchers(series_hits, ledger, cast(Anthropic, series_client))
+    sent = series_client.messages.calls[0]["messages"][0]["content"]
+    assert len(re.findall(r'"ref": ', sent)) == 1 and '"serie"' in sent
+    assert [f.voucher_ref for f in series.flags] == owner
+    assert {f.category for f in series.flags} == {"agarrelaterad"}
+
+    # API down: no further calls, everything to review, and the run says so.
+    def down(call: int, refs: list[str]) -> dict[str, Any]:
+        return {"raise": anthropic.APIConnectionError(request=_REQUEST)}
+
+    down_client = FakeClient(down)
+    offline_api = flag_vouchers(hits, ledger, cast(Anthropic, down_client))
+    assert len(down_client.messages.calls) == 1
+    assert offline_api.error and offline_api.failed_batches == 3
+    assert all(f.category == "avvikelse" and f.needs_review for f in offline_api.flags)
+
+    # A rejected key stops the run with a readable message.
+    def bad_key(call: int, refs: list[str]) -> dict[str, Any]:
+        response = httpx2.Response(401, request=_REQUEST)
+        return {
+            "raise": anthropic.AuthenticationError(
+                "invalid x-api-key", response=response, body=None
+            )
+        }
+
+    with pytest.raises(LlmError, match="API-nyckeln avvisades"):
+        flag_vouchers(hits, ledger, cast(Anthropic, FakeClient(bad_key)))
 
     offline = flag_vouchers(hits[:3], ledger, None)
     assert offline.calls == 0
@@ -251,6 +316,54 @@ def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
         Decimal("50000.00"),
     )
 
+    # A collective voucher (payroll batch) is never added back whole: it goes to review.
+    payroll = next(v.ref for v in ledger.vouchers if v.text.startswith("Löner 2025-03"))
+    collective = ebitda_bridge(kpis, ledger, _flags_on(ledger, [payroll], "agarrelaterad", 0.95))
+    assert collective.items == [] and collective.adjusted == collective.reported
+    assert [f.voucher_ref for f in collective.review] == [payroll]
+    assert "Samlingsverifikat" in collective.review[0].rationale
+
+    # Confident flags dated before the LTM window are listed, not adjusted.
+    assert [f.voucher_ref for f in bridge.outside_period] == (
+        a[1].voucher_refs[:12] + a[5].voucher_refs
+    )
+    move_items = [i for i in bridge.items if set(i.voucher_refs) <= set(a[2].voucher_refs)]
+    assert sorted(acc for i in move_items for acc in i.accounts) == ["5010", "5410"]
+
+    # YTD follows the fiscal year, also when it does not follow the calendar.
+    year = FiscalYear(index=0, start=dt.date(2025, 7, 1), end=dt.date(2026, 6, 30))
+    months = [(2025, m) for m in range(7, 13)] + [(2026, m) for m in range(1, 4)]
+    vouchers = [
+        Voucher(
+            series="A",
+            number=str(i),
+            date=dt.date(y, m, 15),
+            text="Försäljning",
+            transactions=[
+                Transaction(account="1930", amount=Decimal("1000")),
+                Transaction(account="3041", amount=Decimal("-1000")),
+            ],
+        )
+        for i, (y, m) in enumerate(months, start=1)
+    ]
+    broken = Ledger(
+        company_name="Test AB",
+        org_nr="999999-9999",
+        fiscal_years=[year],
+        accounts={},
+        opening_balances=[],
+        closing_balances=[],
+        results=[],
+        vouchers=vouchers,
+    )
+    ytd = ebitda_bridge(
+        compute_kpis(monthly_statements(broken, map_accounts(broken))),
+        broken,
+        _flags_on(broken, ["A3"], "engangspost", 0.9),  # September 2025
+    )
+    assert (ytd.basis, ytd.period) == ("YTD", ["2025-07", "2026-03"])
+    assert ytd.reported == Decimal("9000") and ytd.adjusted == Decimal("8000")
+
 
 def test_dd_questions_reference_account_voucher_and_amount(demo: tuple[Ledger, Facit]) -> None:
     ledger, facit = demo
@@ -269,7 +382,7 @@ def test_dd_questions_reference_account_voucher_and_amount(demo: tuple[Ledger, F
             questions[0]["text"] = "Vad avser de 45 000 kr per månad?"  # digits: rejected
         return {"output": {"questions": questions}}
 
-    client = FakeQuestionClient(script)
+    client = FakeClient(script, key="id")
     questions = dd_questions(flags, ledger, cast(Anthropic, client), model="claude-test")
 
     assert len(client.messages.calls) == 2
@@ -292,7 +405,7 @@ def test_dd_questions_reference_account_voucher_and_amount(demo: tuple[Ledger, F
     def never(call: int, ids: list[str]) -> dict[str, Any]:
         return {"output": {"questions": []}}
 
-    fallback = dd_questions(flags, ledger, cast(Anthropic, FakeQuestionClient(never)))
+    fallback = dd_questions(flags, ledger, cast(Anthropic, FakeClient(never, key="id")))
     assert [q.text for q in fallback] == [q.text for q in offline]
 
 
@@ -327,6 +440,14 @@ def test_no_llm_runs_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     no_key = Settings(_env_file=None, anthropic_api_key=None)  # type: ignore[call-arg]
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
         run_analysis(sie, use_llm=True, settings=no_key)
+
+    # An AI configuration error is a readable message and exit code 1, not a traceback.
+    def rejected(*args: Any, **kwargs: Any) -> None:
+        raise LlmError("API-nyckeln avvisades.")
+
+    monkeypatch.setattr("diligens.cli.run_analysis", rejected)
+    failed = CliRunner().invoke(app, ["analyze", str(sie)])
+    assert failed.exit_code == 1 and "AI-fel: API-nyckeln avvisades." in failed.output
 
 
 def test_eval_scores_flags_against_facit(demo: tuple[Ledger, Facit], tmp_path: Path) -> None:

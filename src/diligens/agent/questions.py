@@ -9,23 +9,23 @@ import json
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from decimal import Decimal
 
 import anthropic
-import pydantic
-from anthropic.types import OutputConfigParam
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from diligens.agent._llm import LlmUnavailable, Usage, ask_structured
+from diligens.analysis.bridge import ebitda_effect
+from diligens.analysis.statements import month_key
 from diligens.config import DEFAULT_MODEL
 from diligens.formatting import format_tsek
 from diligens.models import DDQuestion, Flag, FlagCategory, Ledger
 
 log = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 3
-MAX_TOKENS = 16000
-OUTPUT_CONFIG: OutputConfigParam = {"effort": "medium"}
 ZERO = Decimal("0")
+_DASH = re.compile(r"\s[-–—]\s")
 
 ORDER: tuple[FlagCategory, ...] = (
     "periodisering",
@@ -79,40 +79,57 @@ class _Group(BaseModel):
     account: str
     name: str
     flags: list[Flag]
-
-    @property
-    def amount(self) -> Decimal:
-        return sum((f.amount for f in self.flags), ZERO)
+    amount: Decimal = Field(description="net EBITDA effect of the vouchers, raw sign")
+    first_month: str
+    last_month: str
 
 
 def _groups(flags: list[Flag], ledger: Ledger) -> list[_Group]:
+    vouchers = {v.ref: v for v in ledger.vouchers}
     grouped: dict[tuple[FlagCategory, str], list[Flag]] = defaultdict(list)
     for flag in flags:
         if flag.category != "normal":
             grouped[(flag.category, flag.account)].append(flag)
-    keys = sorted(
-        grouped,
-        key=lambda k: (ORDER.index(k[0]), -abs(sum((f.amount for f in grouped[k]), ZERO))),
-    )
-    return [
-        _Group(
-            id=f"g{i}",
-            category=category,
-            account=account,
-            name=ledger.accounts[account].name if account in ledger.accounts else account,
-            flags=grouped[(category, account)],
+
+    def amount(key: tuple[FlagCategory, str]) -> Decimal:
+        return sum((ebitda_effect(vouchers[f.voucher_ref]) for f in grouped[key]), ZERO)
+
+    keys = sorted(grouped, key=lambda k: (ORDER.index(k[0]), -abs(amount(k))))
+    groups = []
+    for i, (category, account) in enumerate(keys, start=1):
+        members = grouped[(category, account)]
+        months = sorted(month_key(vouchers[f.voucher_ref].date) for f in members)
+        groups.append(
+            _Group(
+                id=f"g{i}",
+                category=category,
+                account=account,
+                name=ledger.accounts[account].name if account in ledger.accounts else account,
+                flags=members,
+                amount=amount((category, account)),
+                first_month=months[0],
+                last_month=months[-1],
+            )
         )
-        for i, (category, account) in enumerate(keys, start=1)
-    ]
+    return groups
 
 
 def _reference(group: _Group) -> str:
     refs = [f.voucher_ref for f in group.flags]
     shown = ", ".join(refs[:5]) + (f" m.fl. ({len(refs)} st)" if len(refs) > 5 else "")
+    period = (
+        group.first_month
+        if group.first_month == group.last_month
+        else f"{group.first_month} till {group.last_month}"
+    )
     return (
-        f" (konto {group.account} {group.name}, verifikat {shown}, "
+        f" (konto {group.account} {group.name}, verifikat {shown}, {period}, "
         f"{format_tsek(abs(group.amount))} TSEK)"
     )
+
+
+def _without_digits(text: str) -> str:
+    return " ".join(re.sub(r"\d+\s*%?", " ", text).split())
 
 
 def _request(groups: list[_Group], ledger: Ledger) -> str:
@@ -125,7 +142,7 @@ def _request(groups: list[_Group], ledger: Ledger) -> str:
                 {
                     "id": g.id,
                     "kategori": g.category,
-                    "konto": g.name,
+                    "konto": _without_digits(g.name),
                     "antal_verifikat": len(g.flags),
                     "verifikationstexter": texts,
                     "motiveringar": list(dict.fromkeys(f.rationale for f in g.flags))[:3],
@@ -136,58 +153,25 @@ def _request(groups: list[_Group], ledger: Ledger) -> str:
     return "Skriv en fråga per grupp:\n" + "\n".join(lines)
 
 
-def _problems(parsed: _LlmQuestions, ids: list[str]) -> list[str]:
-    seen = [q.id for q in parsed.questions]
-    problems = []
-    if missing := [i for i in ids if i not in seen]:
-        problems.append(f"Fråga saknas för: {', '.join(missing)}.")
-    if extra := sorted({i for i in seen if i not in ids or seen.count(i) > 1}):
-        problems.append(f"Okända eller dubblerade id: {', '.join(extra)}.")
-    if digits := [q.id for q in parsed.questions if re.search(r"\d", q.text)]:
-        problems.append(f"Frågan innehåller siffror för: {', '.join(digits)}. Skriv utan siffror.")
-    if bad := [q.id for q in parsed.questions if not q.text.strip().endswith("?")]:
-        problems.append(f"Frågan avslutas inte med frågetecken för: {', '.join(bad)}.")
-    return problems
-
-
-def _ask(
-    groups: list[_Group], ledger: Ledger, client: anthropic.Anthropic, model: str
-) -> dict[str, str]:
-    """Question wording per group id from Claude; empty if it never gets it right."""
-    request = _request(groups, ledger)
-    ids = [g.id for g in groups]
-    feedback = ""
-    for _attempt in range(MAX_ATTEMPTS):
-        content = request + (f"\n\nFöregående svar var ogiltigt. {feedback}" if feedback else "")
-        try:
-            response = client.messages.parse(
-                model=model,
-                max_tokens=MAX_TOKENS,
-                system=[
-                    {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-                ],
-                messages=[{"role": "user", "content": content}],
-                output_format=_LlmQuestions,
-                output_config=OUTPUT_CONFIG,
+def _check(ids: list[str]) -> Callable[[_LlmQuestions], list[str]]:
+    def check(parsed: _LlmQuestions) -> list[str]:
+        seen = [q.id for q in parsed.questions]
+        problems = []
+        if missing := [i for i in ids if i not in seen]:
+            problems.append(f"Fråga saknas för: {', '.join(missing)}.")
+        if extra := sorted({i for i in seen if i not in ids or seen.count(i) > 1}):
+            problems.append(f"Okända eller dubblerade id: {', '.join(extra)}.")
+        if digits := [q.id for q in parsed.questions if re.search(r"\d", q.text)]:
+            problems.append(
+                f"Frågan innehåller siffror för: {', '.join(digits)}. Skriv utan siffror."
             )
-        except pydantic.ValidationError as exc:
-            feedback = f"Svaret följde inte schemat: {exc.error_count()} fel."
-            continue
-        except (
-            anthropic.APIConnectionError,
-            anthropic.RateLimitError,
-            anthropic.InternalServerError,
-        ) as exc:
-            log.warning("LLM-anrop misslyckades efter SDK:ns omförsök: %s", type(exc).__name__)
-            return {}
-        if response.stop_reason != "end_turn" or response.parsed_output is None:
-            feedback = f"Svaret avbröts ({response.stop_reason})."
-            continue
-        problems = _problems(response.parsed_output, ids)
-        if not problems:
-            return {q.id: q.text.strip() for q in response.parsed_output.questions}
-        feedback = " ".join(problems)
-    return {}
+        if dashes := [q.id for q in parsed.questions if _DASH.search(q.text)]:
+            problems.append(f"Frågan använder tankstreck för: {', '.join(dashes)}.")
+        if bad := [q.id for q in parsed.questions if not q.text.strip().endswith("?")]:
+            problems.append(f"Frågan avslutas inte med frågetecken för: {', '.join(bad)}.")
+        return problems
+
+    return check
 
 
 def dd_questions(
@@ -196,11 +180,31 @@ def dd_questions(
     client: anthropic.Anthropic | None,
     model: str = DEFAULT_MODEL,
 ) -> list[DDQuestion]:
-    """One question per (category, account) among non-normal flags, most material first."""
+    """One question per (category, account) among non-normal flags, most material first.
+
+    Raises LlmError when the API rejects the configuration; falls back to templates when the
+    API is unavailable or the model never gets the format right.
+    """
     groups = _groups(flags, ledger)
     if not groups:
         return []
-    wording = _ask(groups, ledger, client, model) if client is not None else {}
+    wording: dict[str, str] = {}
+    if client is not None:
+        try:
+            parsed = ask_structured(
+                client,
+                model=model,
+                system=[{"type": "text", "text": SYSTEM_PROMPT}],
+                content=_request(groups, ledger),
+                output_type=_LlmQuestions,
+                check=_check([g.id for g in groups]),
+                usage=Usage(),
+            )
+        except LlmUnavailable as exc:
+            log.warning("LLM-anrop misslyckades efter SDK:ns omförsök: %s", exc)
+            parsed = None
+        if parsed is not None:
+            wording = {q.id: q.text.strip() for q in parsed.questions}
     return [
         DDQuestion(
             text=wording.get(g.id, TEMPLATES[g.category].format(name=g.name.lower()))

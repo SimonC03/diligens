@@ -2,8 +2,7 @@
 
 from pydantic import BaseModel
 
-from diligens.analysis.bridge import CONFIDENCE_THRESHOLD
-from diligens.models import Facit, Flag, PrefilterHit
+from diligens.models import REVIEW_CONFIDENCE, Facit, Flag, PrefilterHit
 
 
 class AnomalyScore(BaseModel):
@@ -32,9 +31,7 @@ def score_flags(
     planted voucher."""
     by_ref = {f.voucher_ref: f for f in flags}
     hit_refs = {h.voucher_ref for h in hits or []}
-    confident = [
-        f for f in flags if f.category != "normal" and f.confidence >= CONFIDENCE_THRESHOLD
-    ]
+    confident = [f for f in flags if f.category != "normal" and f.confidence >= REVIEW_CONFIDENCE]
     planted = {r for a in facit.anomalies for r in a.voucher_refs}
 
     rows = []
@@ -42,7 +39,7 @@ def score_flags(
         accepted = {anomaly.category, *anomaly.also_accepted}
         on_refs = [by_ref[r] for r in anomaly.voucher_refs if r in by_ref]
         correct = [
-            f for f in on_refs if f.category in accepted and f.confidence >= CONFIDENCE_THRESHOLD
+            f for f in on_refs if f.category in accepted and f.confidence >= REVIEW_CONFIDENCE
         ]
         rows.append(
             AnomalyScore(
