@@ -250,6 +250,9 @@ class Flag(BaseModel):
     ebitda_adjustment: Decimal = Field(
         default=Decimal("0"), description="positive adds back to EBITDA, computed in code"
     )
+    voucher_date: dt.date | None = None
+    voucher_text: str = ""
+    account_name: str = ""
 
     @property
     def needs_review(self) -> bool:
@@ -274,6 +277,9 @@ class BridgeItem(BaseModel):
     amount: Decimal = Field(description="positive increases EBITDA")
     note: str | None = None
     source_ref: str
+    included: bool = Field(
+        default=True, description="False: listed for the advisor to switch on, not in the total"
+    )
 
 
 class EbitdaBridge(BaseModel):
@@ -291,6 +297,10 @@ class EbitdaBridge(BaseModel):
     )
     outside_period: list[Flag] = Field(
         default_factory=list, description="confident adjusting flags dated outside the period"
+    )
+    candidates: list[BridgeItem] = Field(
+        default_factory=list,
+        description="related party and low confidence items in the period, included=False",
     )
     flags: list[Flag] = Field(description="all flags with ebitda_adjustment filled in")
 
@@ -342,6 +352,7 @@ class AnalysisResult(BaseModel):
     flagging: FlaggingResult
     bridge: EbitdaBridge
     questions: list[DDQuestion]
+    memo: str = Field(default="", description="Swedish markdown, numbers filled in by code")
 
     @property
     def flags(self) -> list[Flag]:

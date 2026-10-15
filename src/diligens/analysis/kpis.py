@@ -210,12 +210,17 @@ def _balance_sum(
     return accounts, sum((statements.account_balances[a][month] for a in accounts), ZERO)
 
 
-def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:
-    accounts = [
+def nwc_accounts(statements: Statements) -> list[str]:
+    """Balance sheet accounts that make up working capital (DOMAIN.md section 5)."""
+    return [
         a
         for a in statements.account_balances
         if _in(a, _NWC_RANGES) and not _in(a, _NWC_EXCLUDED_RANGES)
     ]
+
+
+def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:
+    accounts = nwc_accounts(statements)
     values: dict[str, Decimal | None] = {
         m: sum((statements.account_balances[a][m] for a in accounts), ZERO)
         for m in statements.months

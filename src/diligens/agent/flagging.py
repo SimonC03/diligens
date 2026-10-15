@@ -146,8 +146,11 @@ def _batches(items: list[PrefilterHit]) -> Iterator[list[PrefilterHit]]:
         yield items[start : start + BATCH_SIZE]
 
 
-def _flag(voucher: Voucher, category: FlagCategory, rationale: str, confidence: float) -> Flag:
+def _flag(
+    ledger: Ledger, voucher: Voucher, category: FlagCategory, rationale: str, confidence: float
+) -> Flag:
     account, amount = _main_line(voucher)
+    names = ledger.accounts
     return Flag(
         voucher_ref=voucher.ref,
         account=account,
@@ -155,6 +158,9 @@ def _flag(voucher: Voucher, category: FlagCategory, rationale: str, confidence: 
         category=category,
         rationale=rationale,
         confidence=confidence,
+        voucher_date=voucher.date,
+        voucher_text=voucher.text,
+        account_name=names[account].name if account in names else "",
     )
 
 
@@ -173,7 +179,11 @@ def flag_vouchers(
         return FlaggingResult(
             flags=[
                 _flag(
-                    vouchers[h.voucher_ref], "avvikelse", "Förfilter: " + "; ".join(h.reasons), 0.0
+                    ledger,
+                    vouchers[h.voucher_ref],
+                    "avvikelse",
+                    "Förfilter: " + "; ".join(h.reasons),
+                    0.0,
                 )
                 for h in hits
             ]
@@ -236,7 +246,8 @@ def flag_vouchers(
             ("avvikelse", UNAVAILABLE_TEXT if error else REVIEW_TEXT, 0.0),
         )
         flags += [
-            _flag(vouchers[r], category, rationale, confidence) for r in members[hit.voucher_ref]
+            _flag(ledger, vouchers[r], category, rationale, confidence)
+            for r in members[hit.voucher_ref]
         ]
     order = {h.voucher_ref: i for i, h in enumerate(hits)}
     flags.sort(key=lambda f: order[f.voucher_ref])
