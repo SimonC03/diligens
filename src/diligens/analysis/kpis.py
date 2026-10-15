@@ -272,6 +272,7 @@ def _estimated_taxes(statements: Statements, tax_rate: Decimal) -> list[NetDebtI
             continue
         pre_tax = -total([a for a in movements if int(a) < 8900])
         amount = max(ZERO, (pre_tax * tax_rate).quantize(CENT, rounding=ROUND_HALF_UP))
+        rate = f"{tax_rate * 100:.1f}".replace(".", ",")
         items.append(
             NetDebtItem(
                 label=f"Beräknad skatt {_year_label(year)} (ej bokförd)",
@@ -279,7 +280,7 @@ def _estimated_taxes(statements: Statements, tax_rate: Decimal) -> list[NetDebtI
                 accounts=[],
                 amount=amount,
                 source_ref=(
-                    f"{tax_rate * 100:.1f} % av resultat före skatt {months[0]} till "
+                    f"{rate} % av resultat före skatt {months[0]} till "
                     f"{months[-1]} (konton 3000–8899). Antagande: året är inte bokslutat "
                     "och ingen skatt är bokförd på 8900–8989."
                 ),
