@@ -370,7 +370,7 @@ def _net_debt(ws: Worksheet, result: AnalysisResult) -> int:
     return total
 
 
-def _statuses(result: AnalysisResult) -> dict[str, str]:
+def flag_statuses(result: AnalysisResult) -> dict[str, str]:
     """Voucher ref to its status in the bridge; anything not listed is Normal."""
     bridge = result.bridge
     status: dict[str, str] = {}
@@ -402,7 +402,7 @@ def _flagged(ws: Worksheet, result: AnalysisResult) -> None:
     ]
     _header(ws, header)
     reasons = {h.voucher_ref: "; ".join(h.reasons) for h in result.prefilter_hits}
-    statuses = _statuses(result)
+    statuses = flag_statuses(result)
     rows = sorted(
         ((flag, statuses.get(flag.voucher_ref, "Normal")) for flag in result.flags),
         key=lambda fs: (STATUS_ORDER.index(fs[1]), -abs(fs[0].amount)),

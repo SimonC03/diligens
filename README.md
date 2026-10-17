@@ -27,20 +27,60 @@ uv run diligens analyze data/demo/demo_bolag.se --out output/
 
 ## Use as an MCP server
 
-The pipeline is also exposed as MCP tools. Register the server in your MCP client:
+The pipeline is also exposed as MCP tools over stdio (`uv run diligens-mcp`):
+
+| Tool | What it returns |
+|---|---|
+| `analysera_sie` | Reconciliation status, revenue, EBITDA, adjusted EBITDA (LTM or year to date), working capital, net debt, the bridge items and how many items need review |
+| `flagga_poster` | Flagged vouchers as a table: voucher, date, account, amount, category, confidence, bridge status, rationale. Filter on status, largest first |
+| `hamta_nyckeltal` | KPIs for one month (month, year to date, LTM), working capital and net debt items |
+| `exportera_excel` | Writes `dd_pack.xlsx` and `memo.md` and returns the paths and the memo |
+
+Every tool takes `sie_fil` (path to the SIE4 file). `med_ai` (default on) uses Claude for
+classification, questions and memo; without an API key the tools run without AI and say so.
+An analysis is cached per file, so follow-up questions do not repeat the AI calls. Errors
+(missing file, not a SIE file, unknown month, locked output file) come back as readable text.
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json` (Settings, Developer, Edit config) and restart Claude
+Desktop. On Windows use forward slashes or escaped backslashes in the path:
 
 ```json
 {
   "mcpServers": {
     "diligens": {
       "command": "uv",
-      "args": ["--directory", "/ABSOLUTE/PATH/TO/diligens", "run", "diligens-mcp"]
+      "args": ["--directory", "C:/ABSOLUTE/PATH/TO/diligens", "run", "diligens-mcp"]
     }
   }
 }
 ```
 
-Then ask: "Analysera data/demo/demo_bolag.se och visa de största normaliseringsposterna."
+### Claude Code
+
+From the repository folder:
+
+```bash
+claude mcp add diligens -- uv run diligens-mcp
+```
+
+### Manual test checklist
+
+1. `uv run diligens generate --out data/demo/demo_bolag.se` (demo company and facit).
+2. Start the client with the server registered; `diligens` lists four tools.
+3. Ask: "Analysera data/demo/demo_bolag.se och visa de största normaliseringsposterna."
+   Expect a reconciliation "OK", revenue and EBITDA in TSEK, and the bridge items (with AI:
+   office move, recruitment fee, the December invoice moved out, owner related fee).
+4. Ask: "Vilka poster kräver granskning?" The client calls `flagga_poster` with status
+   `granskning`; every row has voucher and account. The answer comes from the cache.
+5. Ask: "Visa nyckeltalen för 2025-06." Month, year to date and LTM columns.
+6. Ask: "Exportera DD-underlaget till output." `output/dd_pack.xlsx` and `output/memo.md`
+   exist; the memo is shown.
+7. Error paths: ask for a file that does not exist, and for month 2031-01. Both answers
+   explain what to do instead, no stack trace.
+8. Optional: remove `ANTHROPIC_API_KEY` from `.env`, restart the server, repeat step 3. The
+   answer says the analysis ran without AI.
 
 ## Docs
 
