@@ -88,7 +88,8 @@ Code tables: `naringsgrenkoder` (also `avdelningKod`, `avdelningText`), `omsklko
   `orgNr` in responses is the 10 digit form. Bolagsverket takes the 10 digits.
 - `omsklkoder` (int): 0 `< 1 tkr`, 1 `1-499`, 2 `500-999`, 3 `1 000-4 999`, 4 `5 000-9 999`,
   5 `10 000-19 999`, 6 `20 000-49 999`, 7 `50 000-99 999`, 8 `100 000-499 999`,
-  9 `500 000-999 999`, 10 `1-5 MSEK x 1000`, 11 and 12 above (tkr).
+  9 `500 000-999 999`, 10 `1 000 000-4 999 999`, 11 `5 000 000-9 999 999`,
+  12 `> 9 999 999` (all tkr).
 - `anstklkoder` (int): 0 missing, 1 `0`, 2 `1-4`, 3 `5-9`, 4 `10-19`, 5 `20-49`, 6 `50-99`,
   7 `100-199`, 8 `200-499`, 9 `500-999`, 10 and up larger.
 - `lankoder` are two digit strings (`01` Stockholm, `00` unknown); `jurformkoder` strings
