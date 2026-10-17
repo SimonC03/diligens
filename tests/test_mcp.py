@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from helpers import fake_registry, fake_scb
+from helpers import unit as scb_unit
 from mcp import Client
-from test_scb import unit as scb_unit
-from test_screening import _fake_registry, _fake_scb
 
 import diligens.mcp_server as server
 from diligens.agent._llm import LlmError
@@ -186,8 +186,8 @@ async def test_no_key_note_and_cache_rules(
 async def test_screening_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     units = [scb_unit(1), scb_unit(2, lan="12"), scb_unit(3, jur="10")]
     turnover = {"6": [u["peOrgNr"] for u in units]}
-    monkeypatch.setattr(server, "make_scb_client", lambda s: _fake_scb(units, turnover))
-    monkeypatch.setattr(server, "make_bolagsverket_client", lambda s: _fake_registry())
+    monkeypatch.setattr(server, "make_scb_client", lambda s: fake_scb(units, turnover))
+    monkeypatch.setattr(server, "make_bolagsverket_client", lambda s: fake_registry())
     async with Client(server.mcp) as client:
         screened = await client.call_tool(
             "screena_bolag",

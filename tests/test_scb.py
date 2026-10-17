@@ -11,76 +11,12 @@ from typing import Any
 
 import httpx
 import pytest
+from helpers import full, unit
 
 from diligens.sources.scb import CLIENT_ENDPOINTS, ScbClient, ScbError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "scb"
 KEY = "test-key-not-real"
-
-
-def unit(
-    n: int,
-    *,
-    sni: str = "62100",
-    anst: str = "5",
-    lan: str = "01",
-    jur: str = "49",
-    stat: str = "1",
-) -> dict[str, Any]:
-    """A made-up legal unit in SCB's partial format."""
-    org = f"55990{n:05d}"
-    return {
-        "peOrgNr": f"16{org}",
-        "orgNr": org,
-        "namn": f"Testbolag {n} AB",
-        "postAdress": {
-            "gatuAdress": f"Exempelgatan {n}",
-            "coAdress": "",
-            "postNr": "11122",
-            "postOrt": "STOCKHOLM",
-        },
-        "primarNaringsgren": {
-            "rangordning": 1,
-            "naringsgren": sni,
-            "andelProcent": 100,
-            "avdelningsKod": "K",
-        },
-        "kommunSate": "0180",
-        "lanSate": lan,
-        "anstKl": anst,
-        "ftgStat": stat,
-        "jurform": jur,
-        "reklamSparrTyp": 0,
-        "telefonSparrTyp": 0,
-        "epostSparrTyp": 0,
-    }
-
-
-def full(n: int, oms: str = "6", year: int = 2025) -> dict[str, Any]:
-    base = unit(n)
-    base.pop("primarNaringsgren")
-    return base | {
-        "aeAnt": 1,
-        "startDat": "2010-01-01T00:00:00Z",
-        "regDat": "2010-01-01T00:00:00Z",
-        "expImp": "0",
-        "tel": "",
-        "epost": "",
-        "omsAr": year,
-        "omsKl": oms,
-        "agKat": "41",
-        "foretagsnamn": f"Testbolag {n} AB",
-        "foretagsnamnAnt": 1,
-        "arbGivStat": "1",
-        "momsStat": "1",
-        "fSkattStat": "1",
-        "bolStat": "0",
-        "privPubl": "1",
-        "sektor": "11000",
-        "naringsgrenar": [
-            {"rangordning": 1, "naringsgren": "62100", "andelProcent": 100, "avdelningsKod": "K"}
-        ],
-    }
 
 
 def problem(status: int, detail: str) -> httpx.Response:

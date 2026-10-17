@@ -1,22 +1,20 @@
 """M6 screening tests: filters and fit score (pure) and the full run with fake APIs."""
 
 import datetime as dt
-import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
+from helpers import fake_registry, fake_scb
+from helpers import unit as scb_unit
 from openpyxl import load_workbook
-from test_scb import unit as scb_unit
 from typer.testing import CliRunner
 
 import diligens.cli as cli
 from diligens.analysis.screening import financial_score, profile_score, select_candidates
 from diligens.cli import app
 from diligens.models import AnnualReport, Figure, ScbUnit, ScreeningCriteria
-from diligens.sources.bolagsverket import BolagsverketClient
 from diligens.sources.scb import ScbClient, ScbError
 
 
@@ -70,7 +68,7 @@ def test_filters_and_profile_score() -> None:
         _unit(3, jur="10"),  # sole trader: not an aktiebolag
         _unit(4, stat="9"),  # no longer active
         _unit(5, anst="8"),  # far outside the employee class
-        _unit(6),  # turnover class adjacent (7)
+        _unit(9),  # turnover class adjacent (7)
         _unit(7),  # turnover class far outside (9), dropped
     ]
     turnover = {
@@ -79,17 +77,17 @@ def test_filters_and_profile_score() -> None:
         "165599000003": "6",
         "165599000004": "6",
         "165599000005": "6",
-        "165599000006": "7",
+        "165599000009": "7",
         "165599000007": "9",
     }
 
     candidates = select_candidates(units, turnover, CRITERIA)
 
-    assert [c.org_nr for c in candidates] == ["5599000001", "5599000006", "5599000002"]  # by score
+    assert [c.org_nr for c in candidates] == ["5599000001", "5599000009", "5599000002"]  # by score
     best = {c.org_nr: c for c in candidates}
     assert best["5599000001"].profile_points == 60
     assert best["5599000002"].profile_points == 15 + 15 + 5 + 0 + 10
-    assert best["5599000006"].profile_points == 15 + 7 + 10 + 10 + 10
+    assert best["5599000009"].profile_points == 15 + 7 + 10 + 10 + 10
     reasons = " ".join(best["5599000002"].profile_reasons)
     assert "anställdaklass" in reasons.lower() and "län" in reasons.lower()
 
@@ -119,64 +117,6 @@ def test_financial_score_and_missing_reports() -> None:
     assert missing.points is None and missing.status == "Saknas digitalt"
 
 
-FIXTURES = Path(__file__).parent / "fixtures"
-
-
-def _fake_scb(units: list[dict[str, Any]], turnover: dict[str, list[str]]) -> ScbClient:
-    tables = {
-        name: json.loads((FIXTURES / "scb" / f"{name}.json").read_text(encoding="utf-8"))
-        for name in ("omsklkoder", "anstklkoder", "lankoder")
-    }
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path.startswith("/v1/kodtabeller/"):
-            return httpx.Response(200, json=tables[path.rsplit("/", 1)[-1]])
-        if path == "/v1/juridiskaenheter/naringsgren/62100":
-            jes = units
-        elif path.startswith("/v1/juridiskaenheter/omsattningsklass/"):
-            wanted = turnover.get(path.rsplit("/", 1)[-1], [])
-            jes = [u for u in units if u["peOrgNr"] in wanted]
-        else:
-            return httpx.Response(404, json={"status": 404, "detail": "x"})
-        return httpx.Response(
-            200,
-            json={"jes": jes, "pagination": {"nextCursorId": 0, "limit": 5000, "hasMore": False}},
-        )
-
-    return ScbClient(
-        "k",
-        transport=httpx.MockTransport(handle),
-        sleep=lambda s: None,
-        now=lambda: dt.datetime(2026, 10, 17, 12, 0),
-    )
-
-
-def _fake_registry() -> BolagsverketClient:
-    package = (FIXTURES / "bolagsverket" / "dokument_exempel.zip").read_bytes()
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/oauth2/token":
-            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
-        if request.url.path.endswith("/dokumentlista"):
-            org = json.loads(request.content)["identitetsbeteckning"]
-            docs = (
-                [
-                    {
-                        "dokumentId": "d1_paket",
-                        "rapporteringsperiodTom": "2025-12-31",
-                        "registreringstidpunkt": "2026-06-30",
-                    }
-                ]
-                if org == "5599000001"
-                else []
-            )
-            return httpx.Response(200, json={"dokument": docs})
-        return httpx.Response(200, content=package)
-
-    return BolagsverketClient("i", "s", transport=httpx.MockTransport(handle))
-
-
 def test_screen_writes_long_list_with_sources_and_missing_reports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -186,12 +126,12 @@ def test_screen_writes_long_list_with_sources_and_missing_reports(
         scb_unit(3, jur="10"),  # sole trader, filtered out
         scb_unit(4, stat="9"),  # inactive, filtered out
         scb_unit(5, anst="8"),  # too large, filtered out
-        scb_unit(6),
+        scb_unit(9),
     ]
-    pe = {n: f"1655990{n:05d}" for n in range(1, 7)}
-    turnover = {"6": [pe[1], pe[2], pe[3], pe[4], pe[5]], "7": [pe[6]]}
-    monkeypatch.setattr(cli, "make_scb_client", lambda s: _fake_scb(units, turnover))
-    monkeypatch.setattr(cli, "make_bolagsverket_client", lambda s: _fake_registry())
+    pe = {n: f"1655990{n:05d}" for n in (1, 2, 3, 4, 5, 9)}
+    turnover = {"6": [pe[1], pe[2], pe[3], pe[4], pe[5]], "7": [pe[9]]}
+    monkeypatch.setattr(cli, "make_scb_client", lambda s: fake_scb(units, turnover))
+    monkeypatch.setattr(cli, "make_bolagsverket_client", lambda s: fake_registry())
 
     run = CliRunner().invoke(
         app,
@@ -219,7 +159,7 @@ def test_screen_writes_long_list_with_sources_and_missing_reports(
     rows = [
         dict(zip(header, (c.value for c in row), strict=True)) for row in ws.iter_rows(min_row=2)
     ]
-    assert [r["Org.nr"] for r in rows] == ["559900-0001", "559900-0006", "559900-0002"]
+    assert [r["Org.nr"] for r in rows] == ["559900-0001", "559900-0009", "559900-0002"]
 
     best = rows[0]
     assert best["Profil"] == 60 and best["Nyckeltal"] == 40  # growth 12,3 %, margin 10,0 %
