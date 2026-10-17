@@ -183,3 +183,26 @@ Format: `YYYY-MM-DD` decision, reason.
 - 2026-10-17 Fixtures for SCB and Bolagsverket are synthetic: the real responses were used
   once to learn the structure (names, fields, formats, contexts), then rebuilt with made-up
   companies and values. The recorded specs and SCB code tables are stored as they are.
+- 2026-10-17 Ties at the annual report cut-off: every candidate with the same profile score
+  as the last one in the top list is looked up too, so who gets financial points never
+  depends on the company name. Capped at 100 lookups, with a warning in the long list.
+- 2026-10-17 Growth earns points only when the prior year revenue is above 0, both years
+  are about twelve months (350 to 380 days), EBIT is not negative and the report's year
+  ended at most 18 months ago. An older report is shown as "Inaktuell årsredovisning" and
+  keeps its margin points. A non twelve month year is noted in the reasons.
+- 2026-10-17 Only iXBRL contexts without segment or scenario are read, so figures split by
+  business line or other dimensions never replace the company totals.
+- 2026-10-17 Lookup outcomes are kept apart: "Saknas digitalt" (no digital report),
+  "Kunde inte läsas" (a report exists but could not be parsed), "Kunde inte hämtas"
+  (Bolagsverket did not answer) and "Ej hämtad" (outside the top list). An error for one
+  company never stops the run. When Bolagsverket is unavailable, the remaining lookups are
+  skipped and the long list says so. Only looked-up companies get a rank; a blank
+  Nyckeltal means no points could be given, not zero.
+- 2026-10-17 Runtime limits for screening: 15 s timeout per Bolagsverket call, at most two
+  document packages per company, 25 MB per download and 50 MB per unpacked file, and a
+  Retry-After from SCB capped at 10 s. `--topp 0` runs on SCB alone and needs no
+  Bolagsverket credentials.
+- 2026-10-17 Bolagsverket calls are paced at 4 per second across all screening threads, after
+  a real run with 61 tied lookups got HTTP 429 at full speed. Paced, the same run finished
+  in 39 s with every lookup answered. A 429 that persists after retries counts as
+  "Bolagsverket svarar inte" and stops further lookups, with a message about throttling.

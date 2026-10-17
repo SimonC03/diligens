@@ -168,6 +168,10 @@ Confirmed by Bolagsverket when the credentials were issued:
   `BOLAGSVERKET_CLIENT_SECRET`), never into the repo, logs or chat.
 - An inactive account is closed after 6 months. Make at least one call before 2027-04-17,
   then keep it in use.
+- Rate limit is not documented in the spec. Observed 2026-10-17: about 40 annual report
+  lookups from four threads at full speed (roughly 5 to 6 calls per second) got HTTP 429
+  with an empty problem body. Paced at 4 calls per second across threads, 61 lookups ran
+  without a 429 in 39 s. A `Retry-After` header is honoured if sent (capped at 10 s).
 - Report lost or leaked credentials to Bolagsverket at once (contact form below).
 - Service status: https://bolagsverket.se/driftsinformation.232.html
 - News and releases (RSS): https://bolagsverket.se/apierochoppnadata/nyheterochreleaserforvaraapier/prenumererapanyheterochreleaserviarssflode.5499.html
