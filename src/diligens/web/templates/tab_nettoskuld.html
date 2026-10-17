@@ -12,16 +12,16 @@
       {% for item in k.net_debt_items %}
       <tr>
         <td>{{ item.label }}</td>
-        <td class="tabular muted">{{ item.accounts|join(', ') or '–' }}</td>
+        <td class="tabular muted">{{ item.accounts|join(', ') or 'Beräknad' }}</td>
         <td class="num">{{ item.amount|tsek }}</td>
         <td class="small faint">{{ item.source_ref }}</td>
       </tr>
       {% endfor %}
       <tr class="total">
-        <td>{{ 'Nettokassa' if k.net_debt < 0 else 'Nettoskuld' }}</td>
+        <td>Nettoskuld</td>
         <td></td>
         <td class="num">{{ k.net_debt|tsek }}</td>
-        <td class="small faint">Summa av posterna. Positivt belopp ökar nettoskulden.</td>
+        <td class="small faint">Summa av posterna. Negativt belopp är nettokassa.</td>
       </tr>
     </tbody>
   </table>

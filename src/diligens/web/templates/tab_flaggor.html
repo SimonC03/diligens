@@ -19,7 +19,7 @@
           <th>Konto</th>
           <th>Text</th>
           <th class="num">Belopp TSEK</th>
-          <th class="num">Justering</th>
+          <th class="num">Justering TSEK</th>
           <th>Kategori</th>
           <th class="num">Konfidens</th>
           <th>Status</th>
@@ -28,8 +28,8 @@
       <tbody>
         {% for row in rows %}
         {% set f = row.flag %}
-        <tr class="clickable" data-voucher="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref }}">
-          <td class="nowrap"><a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref }}">{{ f.voucher_ref }}</a></td>
+        <tr class="clickable" data-voucher="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref|urlencode }}">
+          <td class="nowrap"><a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref|urlencode }}">{{ f.voucher_ref }}</a></td>
           <td class="nowrap tabular muted">{{ f.voucher_date or '' }}</td>
           <td class="nowrap">{{ f.account }}<div class="cell-sub">{{ f.account_name }}</div></td>
           <td style="min-width: 260px">{{ f.voucher_text }}<div class="cell-sub">{{ f.rationale }}</div></td>
@@ -40,6 +40,7 @@
           <td class="nowrap">
             {% if row.status == 'Justerad' %}<span class="badge accent">Justerad</span>
             {% elif row.status == 'Kräver granskning' %}<span class="badge warn">Kräver granskning</span>
+            {% elif row.status == 'Ej medräknad' %}<span class="badge outline">Ej medräknad</span>
             {% elif row.status == 'Normal' %}<span class="badge">Normal</span>
             {% else %}<span class="badge outline">{{ row.status }}</span>{% endif %}
           </td>

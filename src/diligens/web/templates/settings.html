@@ -8,6 +8,7 @@
   </div>
 </header>
 
+{% if error %}<div class="callout neg" role="alert" style="margin-bottom: 16px">{{ error }}</div>{% endif %}
 <section class="panel">
   <div class="panel-head"><h2>Anslutningar</h2></div>
   <table class="table">
@@ -45,11 +46,11 @@
     <div class="panel-body">
       <dl class="dl">
         <dt>Mapp</dt><dd class="mono">{{ workspace }}</dd>
-        <dt>Innehåll</dt><dd>SIE-filer, resultat, Excel, memo och long lists</dd>
+        <dt>Innehåll</dt><dd>SIE-filer, resultat, memo och long lists</dd>
         <dt>Ändras med</dt><dd class="mono">DILIGENS_WORKSPACE</dd>
       </dl>
     </div>
-    <div class="panel-foot">Arbetsytan ligger utanför versionshanteringen och lämnar aldrig datorn.</div>
+    <div class="panel-foot">Arbetsytan lämnar aldrig datorn. Standardmappen ligger under data/private, som är undantagen från versionshantering; välj en lika skyddad mapp om du ändrar den.</div>
   </section>
 
   <section class="panel">

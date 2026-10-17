@@ -31,10 +31,13 @@
 ## Web app (`web/`)
 
 ```
-browser ──► web/app.py (FastAPI, 127.0.0.1 only)
+browser ──► web/app.py (FastAPI, 127.0.0.1 only; wires everything below)
+              ├─ security.py   same-origin writes, no framing, CSP, upload size
+              ├─ context.py    Ctx: settings, workspace, jobs, sources, page rendering
+              ├─ routes/       general.py, analyses.py, screening.py
               ├─ jobs.py       background runs with stages (ANALYSIS_STAGES, SCREENING_STAGES)
               ├─ workspace.py  analyses and screenings as files in DILIGENS_WORKSPACE
-              ├─ views.py      pure: results to table rows, chart geometry, memo HTML
+              ├─ views.py      pure: results to table rows, tab contexts, chart, memo HTML
               └─ templates/ static/  server rendered pages, small progressive JS
 ```
 

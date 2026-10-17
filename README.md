@@ -21,7 +21,8 @@ Complete for the demo. See `docs/PLAN.md` for milestones and `docs/DEMO.md` for 
 uv run diligens app            # opens http://127.0.0.1:8501
 ```
 
-The app runs on this computer only (127.0.0.1) and keeps every analysis and screening in
+Start it from the project folder, where `.env` is. The app runs on this computer only
+(127.0.0.1) and keeps every analysis and screening in
 the workspace folder (`DILIGENS_WORKSPACE`, default `data/private/arbetsyta`, gitignored).
 
 - **Due diligence:** upload a SIE4 file (or run the demo company) and follow the run

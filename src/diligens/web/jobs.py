@@ -12,7 +12,7 @@ from collections.abc import Callable
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from diligens.agent._llm import LlmError
 from diligens.sources.bolagsverket import BolagsverketError
@@ -66,8 +66,8 @@ class Reporter:
 class _Inline(Executor):
     """Runs work at once in the calling thread; used by tests for deterministic jobs."""
 
-    def submit(self, fn, /, *args, **kwargs):  # type: ignore[no-untyped-def]
-        future: Future[object] = Future()
+    def submit[**P, T](self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Future[T]:
+        future: Future[T] = Future()
         try:
             future.set_result(fn(*args, **kwargs))
         except BaseException as exc:  # pragma: no cover - fn catches its own errors
@@ -86,6 +86,10 @@ class JobRunner:
             job = self._jobs.get(job_id)
             if job is not None:
                 change(job)
+
+    def shutdown(self) -> None:
+        """Stop taking work and let the app exit without waiting for a running job."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
@@ -117,7 +121,12 @@ class JobRunner:
     def _run(self, job_id: str, work: Callable[[Reporter], str]) -> None:
         try:
             target = work(Reporter(self, job_id))
-        except (ValueError, OSError, LlmError, ScbError, BolagsverketError) as exc:
+        except (ValidationError, OSError):
+            # Technical detail (a schema dump, a file path) belongs in the log, not on screen.
+            log.exception("Jobb %s avbröts", job_id)
+            self._update(job_id, lambda job: _fail(job, UNEXPECTED))
+            return
+        except (ValueError, LlmError, ScbError, BolagsverketError) as exc:
             message = str(exc) or UNEXPECTED
             self._update(job_id, lambda job: _fail(job, message))
             return

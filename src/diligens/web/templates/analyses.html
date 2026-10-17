@@ -31,7 +31,7 @@
         <tr class="clickable" data-href="/analyser/{{ a.id }}">
           <td><a href="/analyser/{{ a.id }}"><strong>{{ a.company_name }}</strong></a></td>
           <td class="tabular muted nowrap">{{ a.org_nr }}</td>
-          <td class="muted nowrap">{{ a.basis }} {{ a.period }}</td>
+          <td class="muted nowrap">{{ a.basis_label }} {{ a.period }}</td>
           <td>{% if a.reconciled %}<span class="badge pos">Stämmer</span>{% else %}<span class="badge neg">Avviker</span>{% endif %}</td>
           <td class="muted nowrap">{% if a.use_llm %}AI, {{ a.model }}{% else %}Utan AI{% endif %}</td>
           <td class="mono muted">{{ a.source_name }}</td>

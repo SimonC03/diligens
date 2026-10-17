@@ -65,13 +65,18 @@ def _shortlist(candidates: list[Candidate], top: int) -> tuple[list[Candidate], 
     return tied, notes
 
 
+def _looked_up(candidate: Candidate) -> bool:
+    """Its annual report was searched for, whatever the outcome."""
+    return candidate.financial is not None and candidate.financial.status != NOT_FETCHED.status
+
+
 def with_ranks(candidates: list[Candidate]) -> list[tuple[int | None, Candidate]]:
     """Rank 1, 2, ... for companies whose annual report was looked up; None for the rest,
     which follow unranked since their financial score is unknown."""
     out: list[tuple[int | None, Candidate]] = []
     rank = 0
     for c in candidates:
-        looked_up = c.financial is not None and c.financial.status != NOT_FETCHED.status
+        looked_up = _looked_up(c)
         rank += looked_up
         out.append((rank if looked_up else None, c))
     return out
@@ -154,8 +159,8 @@ def retry_unavailable(
     scored, unavailable = _look_up(retry, bolagsverket, today, on_report)
     by_org = {c.org_nr: c for c in scored}
     updated = [by_org.get(c.org_nr, c) for c in result.candidates]
-    looked_up = [c for c in updated if c.financial and c.financial.status != NOT_FETCHED.status]
-    rest = [c for c in updated if not (c.financial and c.financial.status != NOT_FETCHED.status)]
+    looked_up = [c for c in updated if _looked_up(c)]
+    rest = [c for c in updated if not _looked_up(c)]
     notes = [n for n in result.notes if n != UNAVAILABLE_NOTE]
     if unavailable:
         notes.append(UNAVAILABLE_NOTE)

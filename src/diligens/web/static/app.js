@@ -49,9 +49,19 @@
       }
     }
 
+    function fail(message) {
+      if (failure) {
+        $("[data-failure-text]", failure).textContent = message;
+        failure.hidden = false;
+      }
+    }
+
     function tick() {
       fetch(url)
         .then(function (response) {
+          if (response.status === 404) {
+            throw new Error("gone");
+          }
           return response.json();
         })
         .then(function (job) {
@@ -59,16 +69,17 @@
           if (job.status === "klar") {
             window.location.assign(job.target);
           } else if (job.status === "fel") {
-            if (failure) {
-              $("[data-failure-text]", failure).textContent = job.error;
-              failure.hidden = false;
-            }
+            fail(job.error);
           } else {
             window.setTimeout(tick, 600);
           }
         })
-        .catch(function () {
-          window.setTimeout(tick, 1500);
+        .catch(function (error) {
+          if (error.message === "gone") {
+            fail("Körningen finns inte längre, till exempel efter en omstart av appen. Starta den igen.");
+          } else {
+            window.setTimeout(tick, 1500);  // the app may be busy; keep asking
+          }
         });
     }
 
@@ -116,6 +127,10 @@
     var boxes = $$("input[data-include]", table);
     var notice = $("[data-memo-stale]");
 
+    var saved = boxes.map(function (box) {
+      return box.checked;
+    });
+
     function update() {
       boxes.forEach(function (box) {
         box.disabled = true;
@@ -132,11 +147,16 @@
           if (notice) {
             notice.hidden = data.memo_aktuellt;
           }
-          boxes.forEach(function (box) {
+          saved = boxes.map(function (box) {
             box.closest("tr").classList.toggle("subtle", !box.checked);
+            return box.checked;
           });
         })
         .catch(function (error) {
+          // Nothing was saved: show the choice that is saved, not the one that failed.
+          boxes.forEach(function (box, index) {
+            box.checked = saved[index];
+          });
           window.alert(error.message);
         })
         .finally(function () {
@@ -171,13 +191,21 @@
     $("[data-drawer-body]", drawer).textContent = "Hämtar verifikatet …";
     drawer.hidden = false;
     backdrop.hidden = false;
+    $("[data-drawer-link]", drawer).setAttribute("href", url);
     fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "del=1")
       .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Verifikatet kunde inte visas.");
+        }
         return response.text();
       })
       .then(function (html) {
+        // Server rendered and escaped fragment of this app.
         $("[data-drawer-body]", drawer).innerHTML = html;
-        $("[data-drawer-link]", drawer).setAttribute("href", url);
+      })
+      .catch(function (error) {
+        $("[data-drawer-body]", drawer).textContent =
+          error.message === "Failed to fetch" ? "Appen svarar inte." : error.message;
       });
   }
 

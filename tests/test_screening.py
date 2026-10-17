@@ -234,16 +234,16 @@ def test_financial_score_guards_stale_loss_making_and_odd_years() -> None:
 class _Registry:
     """Bolagsverket stand-in whose answer depends on the organisation number."""
 
-    def __init__(self, outcomes: dict[str, Exception | None]) -> None:
+    def __init__(self, outcomes: dict[str, Exception | AnnualReport | None]) -> None:
         self.outcomes = outcomes
         self.asked: list[str] = []
 
     def latest_report(self, org_nr: str) -> AnnualReport | None:
         self.asked.append(org_nr)
         outcome = self.outcomes[org_nr]
-        if outcome is not None:
+        if isinstance(outcome, Exception):
             raise outcome
-        return None
+        return outcome
 
 
 def test_run_includes_ties_and_keeps_going_after_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -315,7 +315,7 @@ def test_retry_fetches_only_what_bolagsverket_did_not_answer(
     result = run_screening(CRITERIA, fake_scb(units, turnover), cast(Any, first), top=25)
     assert any("Bolagsverket svarade inte" in n for n in result.notes)
 
-    later = _Registry({org(2): None, org(8): None})
+    later = _Registry({org(2): _report("33000000", "29000000", "3600000"), org(8): None})
     counts: list[tuple[int, int]] = []
     retried = retry_unavailable(
         result, cast(Any, later), on_report=lambda done, total: counts.append((done, total))
@@ -323,7 +323,9 @@ def test_retry_fetches_only_what_bolagsverket_did_not_answer(
     assert sorted(later.asked) == sorted([org(2), org(8)])  # only the unanswered ones
     assert counts[-1] == (2, 2)
     status = {c.org_nr: c.financial.status for c in retried.candidates if c.financial}
-    assert status[org(2)] == status[org(8)] == "Saknas digitalt"
+    assert status[org(2)] == "Årsredovisning 2025-12-31" and status[org(8)] == "Saknas digitalt"
+    # With its figures the retried company now leads the ranking.
+    assert retried.candidates[0].org_nr == org(2) and retried.candidates[0].total == 100
     assert status[org(10)] == "Kunde inte läsas"  # unreadable is not retried
     assert not any("Bolagsverket svarade inte" in n for n in retried.notes)
     assert retried.reports_fetched == result.reports_fetched

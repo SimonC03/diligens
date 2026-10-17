@@ -64,7 +64,14 @@
     <ul class="list">
       {% for reason in (f.reasons if f else ['Årsredovisningen söktes inte']) %}<li><span>{{ reason }}</span></li>{% endfor %}
     </ul>
-    {% if f and f.revenue %}<div class="panel-foot">Källa: {{ f.revenue.source_ref }}</div>{% endif %}
+    {% if f and (f.revenue or f.ebit) %}
+    <div class="panel-foot">
+      {% for label, fig in (('Nettoomsättning', f.revenue), ('Föregående år', f.revenue_prior), ('Rörelseresultat', f.ebit)) if fig %}
+      <div>{{ label }}: {{ fig.source_ref }}</div>
+      {% endfor %}
+      <div>Tillväxt och rörelsemarginal räknas av koden ur beloppen ovan.</div>
+    </div>
+    {% endif %}
   </section>
 </div>
 
@@ -94,7 +101,7 @@
             {% else %}{{ fig.value|integer }}{% endif %}
           </td>
           {% endfor %}
-          <td class="small faint">{{ now.source_ref if now else '' }}</td>
+          <td class="small faint">{{ now.source_ref if now else '' }}{% if prior %}<div>Föregående år: {{ prior.source_ref }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

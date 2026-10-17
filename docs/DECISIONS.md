@@ -240,3 +240,16 @@ Format: `YYYY-MM-DD` decision, reason.
   pacing, so the limit is likely a quota over a longer window. Instead of slowing every run,
   the app offers to fetch the unanswered reports later (`retry_unavailable`); unreadable
   reports and companies outside the top list are not retried.
+- 2026-10-17 The advisor's bridge choice reaches everything that shows adjustments: the
+  memo lists the included rows as adjustments and the rest as left out, a proposed item the
+  advisor unticks gets the status "Ej medräknad", a candidate the advisor ticks becomes
+  "Justerad", and each voucher's EBITDA adjustment follows its row (BridgeItem keeps the
+  effect per voucher). The memo also states the adjusted margin on adjusted revenue.
+- 2026-10-17 App safety: a state changing request must come from the app's own origin, port
+  included (or carry no cross-site fetch marker); every response forbids framing and allows
+  scripts and styles only from the app; uploads over 50 MB are refused from the request
+  header before the body is read; workspace files are replaced atomically; uploads left by
+  an interrupted run are removed after an hour.
+- 2026-10-17 Percentages are rounded half up everywhere (screen, memo), as Excel shows them.
+  The net debt line is always labelled Nettoskuld; a negative amount is net cash, as in
+  the Excel pack.

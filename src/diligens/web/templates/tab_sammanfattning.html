@@ -23,7 +23,7 @@
     <div class="stat">
       <div class="stat-label">Nettoskuld {{ k.net_debt_month }}</div>
       <div class="stat-value">{{ k.net_debt|tsek }}<span class="stat-unit">TSEK</span></div>
-      <div class="stat-sub">{% if net_cash %}Negativ, det vill säga nettokassa{% else %}Räntebärande skulder minus kassa{% endif %}{% if estimated_tax %}, inklusive beräknad skatt{% endif %}</div>
+      <div class="stat-sub">{% if net_cash %}Negativ, det vill säga nettokassa. {% endif %}Räntebärande skulder och skatter minus kassa och placeringar{% if estimated_tax %}, med beräknad skatt{% endif %}</div>
     </div>
   </div>
   <div class="stats stats-row">
@@ -40,11 +40,11 @@
     <div class="stat">
       <div class="stat-label">Kräver granskning</div>
       <div class="stat-value">{{ review }}<span class="stat-unit">poster</span></div>
-      <div class="stat-sub">Låg konfidens, ingår inte automatiskt</div>
+      <div class="stat-sub">Låg konfidens eller samlingsverifikat, ingår inte automatiskt</div>
     </div>
     <div class="stat">
       <div class="stat-label">Avstämning mot SIE-filen</div>
-      <div class="stat-value">{{ r.reconciliation.total_difference|tsek }}<span class="stat-unit">TSEK diff.</span></div>
+      <div class="stat-value">{{ r.reconciliation.total_difference|sek }}<span class="stat-unit">SEK diff.</span></div>
       <div class="stat-sub">{% if r.reconciliation.ok %}Alla konton stämmer{% else %}Se fliken Avstämning{% endif %}</div>
     </div>
   </div>
@@ -106,7 +106,7 @@
     {% if r.questions %}
     <ol class="ordered">
       {% for q in r.questions[:4] %}
-      <li><span>{{ q.wording or q.text }}<span class="cell-sub" style="display: block">{{ q.voucher_refs[:3]|join(', ') }}{% if q.amount is not none %} · {{ (-q.amount)|tsek }} TSEK{% endif %}</span></span></li>
+      <li><span>{{ q.wording or q.text }}<span class="cell-sub" style="display: block">Konto {{ q.accounts|join(', ') }} · {{ q.voucher_refs[:3]|join(', ') }}{% if q.voucher_refs|length > 3 %} m.fl.{% endif %}</span></span></li>
       {% endfor %}
     </ol>
     {% else %}

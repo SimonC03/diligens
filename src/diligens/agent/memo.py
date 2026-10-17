@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import anthropic
 from pydantic import BaseModel
@@ -56,7 +56,11 @@ def _tsek(value: Decimal | None) -> str | None:
 
 
 def _percent(value: Decimal | None) -> str | None:
-    return None if value is None else f"{value * 100:.1f} %".replace(".", ",")
+    """One decimal, rounded half up as Excel shows it."""
+    if value is None:
+        return None
+    share = (value * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return f"{share} %".replace(".", ",")
 
 
 def _signed(value: Decimal) -> str:
@@ -89,6 +93,9 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
         "ebitda": _tsek(series["ebitda"].values[month]),
         "ebitda_marginal": _percent(series["ebitda_marginal"].values[month]),
         "justerad_ebitda": _tsek(bridge.adjusted),
+        "justerad_marginal": _percent(
+            bridge.adjusted / bridge.adjusted_revenue if bridge.adjusted_revenue else None
+        ),
         "justering": _signed(bridge.adjusted - bridge.reported),
         "tillvaxt": _percent(kpis.ltm["tillvaxt"].values.get(last)),
         "rorelsekapital": _tsek(kpis.nwc.values[last]),
@@ -146,7 +153,13 @@ def _template(facts: dict[str, str]) -> str:
             if "tillvaxt" in facts
             else ""
         )
-        + " Justerad EBITDA uppgår till {justerad_ebitda}.",
+        + " Justerad EBITDA uppgår till {justerad_ebitda}"
+        + (
+            ", en marginal om {justerad_marginal} på justerad omsättning"
+            if "justerad_marginal" in facts
+            else ""
+        )
+        + ".",
         "",
         "## Normaliseringar",
         "",

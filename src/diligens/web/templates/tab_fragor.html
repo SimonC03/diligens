@@ -13,11 +13,9 @@
     {% for q in r.questions %}
     <li>
       <span>
-        {{ q.wording or q.text }}
+        {{ q.text }}
         <span class="cell-sub" style="display: block">
-          Konto {{ q.accounts|join(', ') }} ·
-          {% for ref in q.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if q.voucher_refs|length > 6 %} m.fl. ({{ q.voucher_refs|length }} st){% endif %}
-          {% if q.amount is not none %} · {{ (-q.amount)|tsek }} TSEK{% endif %}
+          Verifikat {% for ref in q.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref|urlencode }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if q.voucher_refs|length > 6 %} m.fl. ({{ q.voucher_refs|length }} st){% endif %}
         </span>
       </span>
     </li>
@@ -26,6 +24,6 @@
   {% else %}
   <div class="empty">Inga frågor att ställa.</div>
   {% endif %}
-  <div class="panel-foot">Belopp: verifikatens EBITDA-konton, intäkt positiv och kostnad negativ.{% if not meta.use_llm %} Utan AI-klassning följer frågorna mallar.{% endif %}</div>
+  <div class="panel-foot">Beloppen i frågorna avser verifikatens EBITDA-konton under hela den period som referensen anger, inte bara LTM.{% if not meta.use_llm %} Utan AI-klassning följer frågorna mallar.{% endif %}</div>
 </div>
 {% endblock %}

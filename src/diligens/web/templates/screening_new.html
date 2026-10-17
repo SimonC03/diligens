@@ -5,7 +5,7 @@
 <header class="page-head">
   <div>
     <h1>Ny screening</h1>
-    <p class="lede">Bransch är krav. Storlek och län ger poäng: exakt träff ger full poäng och en klass ifrån halv. Bolag längre ifrån tas bort.</p>
+    <p class="lede">Bransch är krav. Omsättnings- och anställdaklass: exakt träff ger full poäng, en klass ifrån ungefär halv, längre ifrån tas bort. Län ger poäng men utesluter inga bolag.</p>
   </div>
 </header>
 
@@ -16,7 +16,7 @@
   <div class="panel-body form">
     <div class="field" data-sni>
       <label class="field-label" for="sni-input">Bransch, SNI 2025</label>
-      <input type="hidden" name="sni" value="">
+      <input type="hidden" name="sni" value="{{ chosen.sni|join(',') }}">
       <input class="input" id="sni-input" list="sni-list" data-sni-input placeholder="Sök på kod eller namn, till exempel 62100 eller dataprogrammering" autocomplete="off">
       <datalist id="sni-list">
         {% for code, text in sni %}<option value="{{ code }} {{ text }}"></option>{% endfor %}
@@ -29,7 +29,7 @@
       <span class="field-label">Omsättning</span>
       <div class="checks">
         {% for code, text in tables.omsklkoder.items() %}
-        <label class="check"><input type="checkbox" name="oms_kl" value="{{ code }}"><span class="code">{{ code }}</span>{{ text }}</label>
+        <label class="check"><input type="checkbox" name="oms_kl" value="{{ code }}" {% if code in chosen.oms %}checked{% endif %}><span class="code">{{ code }}</span>{{ text }}</label>
         {% endfor %}
       </div>
     </div>
@@ -38,7 +38,7 @@
       <span class="field-label">Antal anställda</span>
       <div class="checks">
         {% for code, text in tables.anstklkoder.items() %}
-        <label class="check"><input type="checkbox" name="anst_kl" value="{{ code }}"><span class="code">{{ code }}</span>{{ text }}</label>
+        <label class="check"><input type="checkbox" name="anst_kl" value="{{ code }}" {% if code in chosen.anst %}checked{% endif %}><span class="code">{{ code }}</span>{{ text }}</label>
         {% endfor %}
       </div>
     </div>
@@ -47,14 +47,14 @@
       <span class="field-label">Län för säte</span>
       <div class="checks">
         {% for code, text in tables.lankoder.items() if code != '00' %}
-        <label class="check"><input type="checkbox" name="lan" value="{{ code }}">{{ text }}</label>
+        <label class="check"><input type="checkbox" name="lan" value="{{ code }}" {% if code in chosen.lan %}checked{% endif %}>{{ text }}</label>
         {% endfor %}
       </div>
     </div>
 
     <div class="field">
       <label class="switch">
-        <input type="checkbox" name="med_bokslut" value="1" {% if status.bolagsverket %}checked{% else %}disabled{% endif %}>
+        <input type="checkbox" name="med_bokslut" value="1" {% if not status.bolagsverket %}disabled{% elif chosen.bokslut %}checked{% endif %}>
         <span class="switch-track"></span>
         <span>
           <span class="field-label">Hämta årsredovisningar från Bolagsverket</span>
@@ -63,7 +63,7 @@
       </label>
       <div class="form-row" style="margin-left: 46px">
         <label class="small muted" for="topp">Antal bästa profiler</label>
-        <input class="input input-sm" type="number" id="topp" name="topp" min="1" max="100" value="{{ top_default }}">
+        <input class="input input-sm" type="number" id="topp" name="topp" min="1" max="100" value="{{ chosen.topp }}">
       </div>
     </div>
 

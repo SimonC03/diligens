@@ -6,7 +6,8 @@ tests check them against the KPIs, so the screen, the workbook and the analysis 
 
 import html
 import re
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -20,7 +21,7 @@ from diligens.export.excel import (
     flag_statuses,
 )
 from diligens.formatting import format_tsek
-from diligens.models import AnalysisResult, Flag, Ledger, ScreeningResult
+from diligens.models import AnalysisResult, EbitdaBridge, Flag, Ledger, ScreeningResult
 from diligens.screening import with_ranks
 
 ZERO = Decimal(0)
@@ -51,7 +52,8 @@ def confidence(value: float) -> str:
 def percent(value: Decimal | float | None) -> str:
     if value is None:
         return MISSING
-    return f"{Decimal(str(value)) * 100:.1f} %".replace(".", ",")
+    share = (Decimal(str(value)) * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return f"{share} %".replace(".", ",")
 
 
 def month_label(month: str) -> str:
@@ -228,7 +230,7 @@ def monthly_chart(result: AnalysisResult, width: float = 1060, height: float = 2
     revenue = [result.kpis.monthly["nettoomsattning"].values.get(m) or ZERO for m in months]
     ebitda = [result.kpis.monthly["ebitda"].values.get(m) or ZERO for m in months]
     top = max([*revenue, *ebitda, Decimal(1)])
-    bottom = min([*ebitda, ZERO])
+    bottom = min([*revenue, *ebitda, ZERO])
     span = float(top - bottom) or 1.0
     plot = height - 16
 
@@ -270,6 +272,7 @@ def monthly_chart(result: AnalysisResult, width: float = 1060, height: float = 2
 # --------------------------------------------------------------------- memo
 
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
+_MARKER = re.compile(r"^(#+[ \t]*|- )")
 
 
 def memo_html(markdown: str) -> str:
@@ -278,7 +281,9 @@ def memo_html(markdown: str) -> str:
     in_list = False
     for raw in markdown.splitlines():
         line = raw.rstrip()
-        text = _BOLD.sub(r"<strong>\1</strong>", html.escape(line.lstrip("#- ").strip()))
+        marker = _MARKER.match(line)  # only the marker: "- -600,0" keeps its minus sign
+        body = line[marker.end() :] if marker else line
+        text = _BOLD.sub(r"<strong>\1</strong>", html.escape(body.strip()))
         if line.startswith("- "):
             if not in_list:
                 out.append("<ul>")
@@ -380,7 +385,7 @@ def candidate_rows(result: ScreeningResult) -> list[CandidateRow]:
                 town=c.unit.post_town.title(),
                 county=labels.get("lankoder", {}).get(c.unit.county, c.unit.county),
                 turnover_class=labels.get("omsklkoder", {}).get(
-                    c.turnover_class, c.turnover_class or "okänd"
+                    c.turnover_class, c.turnover_class or "Ej hämtad"
                 ),
                 employee_class=labels.get("anstklkoder", {}).get(
                     c.unit.employee_class, c.unit.employee_class
@@ -400,3 +405,101 @@ def candidate_rows(result: ScreeningResult) -> list[CandidateRow]:
 
 def org_display(org_nr: str) -> str:
     return f"{org_nr[:6]}-{org_nr[6:]}" if len(org_nr) == 10 else org_nr
+
+
+# ------------------------------------------------------------------- tabs
+
+# Tabs of an analysis, grouped as the work flows: overview, figures, earnings quality, basis.
+TABS: list[tuple[str, list[tuple[str, str]]]] = [
+    ("Översikt", [("sammanfattning", "Sammanfattning")]),
+    (
+        "Finansiell information",
+        [
+            ("resultatrakning", "Resultaträkning"),
+            ("balansrakning", "Balansräkning"),
+            ("rorelsekapital", "Rörelsekapital"),
+            ("nettoskuld", "Nettoskuld"),
+        ],
+    ),
+    (
+        "Resultatets kvalitet",
+        [("brygga", "EBITDA-brygga"), ("flaggor", "Flaggade poster"), ("fragor", "DD-frågor")],
+    ),
+    ("Underlag", [("avstamning", "Avstämning"), ("memo", "Memo")]),
+]
+TAB_NAMES = {slug: label for _, tabs in TABS for slug, label in tabs}
+
+
+def adjusted_margin(bridge: EbitdaBridge) -> Decimal | None:
+    """Adjusted EBITDA over adjusted revenue (DOMAIN.md section 4); None without revenue."""
+    return bridge.adjusted / bridge.adjusted_revenue if bridge.adjusted_revenue else None
+
+
+def period_title(bridge: EbitdaBridge) -> str:
+    basis = "LTM" if bridge.basis == "LTM" else "Hittills i år"
+    return f"{basis} {bridge.period[0]} till {bridge.period[1]}"
+
+
+def _summary(result: AnalysisResult, _: str) -> dict[str, Any]:
+    kpis, bridge = result.kpis, result.bridge
+    rows = flag_rows(result)
+    return {
+        "series": kpis.ltm if bridge.basis == "LTM" else kpis.ytd,
+        "month": bridge.month,
+        "chart": monthly_chart(result),
+        "review": sum(1 for r in rows if r.status == "Kräver granskning"),
+        "adjusted_margin": adjusted_margin(bridge),
+        "nwc_last": kpis.nwc.values.get(kpis.months[-1]),
+        "adjustments": bridge.adjusted - bridge.reported,
+        "net_cash": kpis.net_debt < 0,
+        "estimated_tax": any(i.kind == "beraknad_skatt" for i in kpis.net_debt_items),
+    }
+
+
+def _bridge(result: AnalysisResult, _: str) -> dict[str, Any]:
+    bridge = result.bridge
+    return {
+        "items": [*bridge.items, *bridge.candidates],
+        "categories": CATEGORY_LABELS,
+        "adjusted_margin": adjusted_margin(bridge),
+    }
+
+
+def _flags(result: AnalysisResult, chosen: str) -> dict[str, Any]:
+    rows = flag_rows(result)
+    return {
+        "rows": [r for r in rows if not chosen or r.status == chosen],
+        "counts": status_counts(rows),
+        "chosen": chosen,
+        "total": len(rows),
+    }
+
+
+def _reconciliation(result: AnalysisResult, _: str) -> dict[str, Any]:
+    rec = result.reconciliation
+    return {
+        "off": [row for row in rec.rows if row.difference != 0],
+        "years": {fy.index: f"{fy.start} till {fy.end}" for fy in result.statements.fiscal_years},
+    }
+
+
+_TAB_CONTEXT: dict[str, Any] = {
+    "sammanfattning": _summary,
+    "resultatrakning": lambda r, _: {
+        "rows": income_rows(r),
+        "period_title": period_title(r.bridge),
+    },
+    "balansrakning": lambda r, _: {"rows": balance_rows(r)},
+    "rorelsekapital": lambda r, _: {"rows": nwc_rows(r)},
+    "brygga": _bridge,
+    "flaggor": _flags,
+    "avstamning": _reconciliation,
+    "memo": lambda r, _: {"memo_html": memo_html(r.memo)},
+}
+
+
+def tab_context(tab: str, result: AnalysisResult, status_filter: str = "") -> dict[str, Any]:
+    """What one analysis tab shows, beyond the result itself."""
+    build = _TAB_CONTEXT.get(tab)
+    context: dict[str, Any] = build(result, status_filter) if build else {}
+    return context

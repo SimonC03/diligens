@@ -66,6 +66,7 @@ def _app(workspace: Path, demo: Path) -> TestClient:
         bolagsverket_factory=lambda s: fake_registry(),
         inline_jobs=True,
         demo_file=demo,
+        allowed_hosts=("testserver",),
     )
     return TestClient(app)
 
@@ -302,14 +303,64 @@ def test_screening_flow_with_form_tables_and_company_page(client: TestClient) ->
 def test_local_only_and_same_site(client: TestClient) -> None:
     foreign_host = client.get("/", headers={"host": "evil.example"})
     assert foreign_host.status_code == 400
-    cross_site = client.post(
-        "/analyser", data={"demo": "1"}, headers={"origin": "https://evil.example"}
+    for origin in (
+        "https://evil.example",
+        "http://localhost:3000",
+        "http://testserver:8080",
+        "null",
+    ):
+        refused = client.post("/analyser", data={"demo": "1"}, headers={"origin": origin})
+        assert refused.status_code == 403, origin
+    no_origin = client.post(
+        "/analyser", data={"demo": "1"}, headers={"sec-fetch-site": "cross-site"}
     )
-    assert cross_site.status_code == 403
-    same_site = client.post("/api/test/scb", headers={"origin": "http://127.0.0.1:8501"})
+    assert no_origin.status_code == 403
+    same_site = client.post("/api/test/scb", headers={"origin": "http://testserver"})
     assert same_site.status_code == 200 and same_site.json()["ok"]
     assert client.post("/api/test/bolagsverket").json()["ok"]
     assert client.get("/analyser/..%2F..%2Fetc/sammanfattning").status_code == 404
+
+    # Not framable, scripts and styles only from the app, nothing cached or referred.
+    headers = client.get("/").headers
+    assert headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in headers["content-security-policy"]
+    assert "script-src 'self'" in headers["content-security-policy"]
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["referrer-policy"] == "no-referrer"
+    assert "<script>" not in client.get("/").text  # no inline script for the policy to block
+
+    # An oversized upload is refused before its body is read.
+    too_large = client.post(
+        "/analyser", content=b"x", headers={"content-length": str(60 * 1024 * 1024)}
+    )
+    assert too_large.status_code == 413
+
+
+def test_unknown_addresses_and_bad_input_read_well(client: TestClient) -> None:
+    unknown = client.get("/finns-inte")
+    assert unknown.status_code == 404 and "Sidan finns inte" in unknown.text
+    assert "<html" in unknown.text  # the app's own page, not a JSON body
+    bad_number = client.post("/api/analyser/20990101-000000-abcdef/urval", content=b"{x")
+    assert bad_number.status_code == 400 and "error" in bad_number.json()
+    gone = client.get("/api/jobb/0000")
+    assert gone.status_code == 404 and "Starta den igen" in gone.json()["error"]
+
+    # Odd form values are dropped or refused readably, and the choices are kept.
+    odd = client.post(
+        "/screening",
+        data={"sni": "62100, 62100", "oms_kl": ["x", "6"], "lan": ["1", "evil"], "topp": "abc"},
+    )
+    assert odd.status_code == 200 and "Screening" in odd.text
+    form_error = client.post("/screening", data={"sni": "6210", "oms_kl": ["6"], "lan": ["1"]})
+    assert "fem siffror" in form_error.text
+    assert 'name="oms_kl" value="6" checked' in form_error.text
+    assert 'name="lan" value="01" checked' in form_error.text
+
+
+def test_memo_html_keeps_negative_amounts() -> None:
+    html = views.memo_html("- -600,0 TSEK periodisering\n-3,0 % lägre marginal\n## Rubrik")
+    assert "<li>-600,0 TSEK periodisering</li>" in html
+    assert "<p>-3,0 % lägre marginal</p>" in html and "<h3>Rubrik</h3>" in html
 
 
 def test_demo_company_runs_from_the_form(client: TestClient) -> None:
@@ -346,6 +397,7 @@ def test_screening_can_fetch_what_bolagsverket_did_not_answer(tmp_path: Path, de
         bolagsverket_factory=lambda s: _Throttled(state),  # type: ignore[arg-type,return-value]
         inline_jobs=True,
         demo_file=demo,
+        allowed_hosts=("testserver",),
     )
     with TestClient(app) as client:
         throttled = client.post(

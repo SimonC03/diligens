@@ -1,5 +1,6 @@
 """Diligens CLI. Each command maps to a milestone in docs/PLAN.md."""
 
+import socket
 import threading
 import time
 import webbrowser
@@ -272,6 +273,18 @@ def run_app(
 
     from diligens.web.app import create_app
 
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError as exc:
+            typer.secho(
+                f"Port {port} används redan, kanske av en Diligens som redan körs. Öppna "
+                f"http://127.0.0.1:{port} eller starta med en annan port, till exempel "
+                f"--port {port + 1}.",
+                fg="red",
+                err=True,
+            )
+            raise typer.Exit(code=EXIT_ERROR) from exc
     url = f"http://127.0.0.1:{port}"
     typer.secho(f"Diligens körs på {url}", bold=True)
     typer.echo("Avsluta med Ctrl+C.")

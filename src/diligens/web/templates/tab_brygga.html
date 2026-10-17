@@ -39,7 +39,7 @@
           <td>{{ item.label }}{% if item.note %}<div class="cell-sub">{{ item.note }}</div>{% endif %}</td>
           <td class="nowrap">{{ categories[item.category] }}</td>
           <td class="small">
-            {% for ref in item.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if item.voucher_refs|length > 6 %} m.fl. ({{ item.voucher_refs|length }} st){% endif %}
+            {% for ref in item.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref|urlencode }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if item.voucher_refs|length > 6 %} m.fl. ({{ item.voucher_refs|length }} st){% endif %}
           </td>
           <td class="num">{{ item.amount|tsek }}</td>
           <td class="num">{{ item.revenue_amount|tsek if item.revenue_amount else '–' }}</td>
