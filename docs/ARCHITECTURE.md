@@ -61,6 +61,25 @@ def dd_questions(
 def write_memo(result: AnalysisResult, client: Anthropic | None, model: str) -> str: ...
 
 
+# sources/ (the only place with HTTP)
+class ScbClient:            # legal_units(kind, code), count, full(org_nr), code_table(name)
+class BolagsverketClient:   # documents(org_nr), download(id), latest_report(org_nr)
+def parse_ixbrl(document: bytes, document_id: str) -> AnnualReport: ...
+
+
+# analysis/screening.py (pure)
+def select_candidates(units, turnover, criteria) -> list[Candidate]: ...
+def financial_score(report: AnnualReport | None) -> FinancialScore: ...
+
+
+# screening.py
+def run_screening(criteria, scb, bolagsverket, top=25) -> ScreeningResult: ...
+
+
+# export/longlist.py
+def export_long_list(result: ScreeningResult, out_dir: Path) -> Path: ...
+
+
 # export/excel.py
 def export_dd_pack(result: AnalysisResult, out_dir: Path) -> Path: ...
 

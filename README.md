@@ -25,6 +25,23 @@ uv run diligens analyze data/demo/demo_bolag.se --out output/
 
 `--no-llm` runs the deterministic part without an API key.
 
+## Buy & Build screening
+
+Needs `SCB_API_KEY` and `BOLAGSVERKET_CLIENT_ID` / `BOLAGSVERKET_CLIENT_SECRET` in `.env`
+(see `docs/DATA_SOURCES.md`).
+
+```bash
+uv run diligens screen --sni 62100 --oms-kl 6 --anst-kl 5 --lan 01 --out output/
+```
+
+Codes follow SCB's tables: SNI 2025 (five digits), turnover class (6 = 20 to 49 MSEK),
+employee class (5 = 20 to 49), county (01 Stockholm). Several values per option are allowed
+(`--sni 62100 --sni 62201`). The result is `output/long_list.xlsx`: active aktiebolag with
+a fit score 0 to 100 (profile 0 to 60 from SCB, growth and EBIT margin 0 to 40 from the
+latest digital annual report), the reasons, and the source of every figure. Annual reports
+are fetched for the 25 best profiles (`--topp`); "Saknas digitalt" means the company has no
+digital annual report. `--utan-bokslut` uses SCB only.
+
 ## Use as an MCP server
 
 The pipeline is also exposed as MCP tools over stdio (`uv run diligens-mcp`):
@@ -35,6 +52,8 @@ The pipeline is also exposed as MCP tools over stdio (`uv run diligens-mcp`):
 | `flagga_poster` | Flagged vouchers as a table: voucher, date, account, amount, category, confidence, bridge status, rationale. Filter on status, largest first |
 | `hamta_nyckeltal` | KPIs for one month (month, year to date, LTM), working capital and net debt items |
 | `exportera_excel` | Writes `dd_pack.xlsx` and `memo.md` and returns the paths and the memo |
+| `screena_bolag` | Buy & Build screening: top candidates with score and reasons, optionally the long list |
+| `hamta_bokslut` | Key figures from a company's latest digital annual report, with sources |
 
 Every tool takes `sie_fil` (path to the SIE4 file). `med_ai` (default on) uses Claude for
 classification, questions and memo; without an API key the tools run without AI and say so.

@@ -163,3 +163,23 @@ Format: `YYYY-MM-DD` decision, reason.
   AI setting matches and the related party names match (or none are given). hamta_nyckeltal
   is deterministic and reuses any cached analysis or runs without AI. exportera_excel only
   writes to output/ inside the project or to folders outside it.
+- 2026-10-17 Screening fetches candidates by paging through SCB's SNI list and the turnover
+  class lists (targets and their neighbours) and intersecting on peOrgNr, instead of one
+  `/full` call per company. SNI 62100 (31 623 units) pages in about 6 s; a full screening
+  with 25 annual reports took 20 s.
+- 2026-10-17 Hard filters: active (ftgStat 1), jurform 49 (aktiebolag), primary SNI among
+  the targets, and turnover and employee class at most one class from a target. Profile
+  score 0-60: SNI 15, turnover class 15 (7 one class off), employee class 10 (5 one class
+  off, 0 if SCB has no figure), county 10, active aktiebolag 10. Financial score 0-40 from
+  the latest digital annual report: growth 20 (>= 10 %) / 10 (0-10 %) / 0, EBIT margin
+  20 (>= 10 %) / 10 (5-10 %) / 0. EBIT margin, not EBITDA, since K2 reports need not tag
+  depreciation.
+- 2026-10-17 Annual reports are looked up only for the 25 best profiles by default
+  (`--topp`), in four threads, to stay well under a minute. Others show "Ej hämtad"; no
+  digital report shows "Saknas digitalt" and no financial points, never an estimate.
+- 2026-10-17 Bolagsverket's "Värdefulla datamängder" has a single production environment,
+  so "test environment first" in PLAN.md could not apply; development used the spec's own
+  test number (5299999994) and synthetic fixtures.
+- 2026-10-17 Fixtures for SCB and Bolagsverket are synthetic: the real responses were used
+  once to learn the structure (names, fields, formats, contexts), then rebuilt with made-up
+  companies and values. The recorded specs and SCB code tables are stored as they are.
