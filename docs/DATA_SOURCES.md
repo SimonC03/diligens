@@ -93,9 +93,22 @@ here.
   SCB provides the candidate list.
 - Only digitally filed annual reports are included. Paper filed reports are missing: show
   "Saknas digitalt", never estimate.
-- Endpoints seen in third party clients (verify): base
-  `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1`, test environment under
-  `accept2`. Operations for organisations, document list and document download (zip).
+- Verified 2026-10-17 with our credentials (spec from the Developer Portal REST API,
+  `https://portal.api.bolagsverket.se/api/am/devportal/v3/apis/ff8f9a91-1fdd-4705-8836-c1906581162f/swagger`):
+  - Base `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1`, the only environment
+    listed ("Default"). `BOLAGSVERKET_ENV` has no effect on this API.
+  - The token must request the scopes `vardefulla-datamangder:read` (data) and
+    `vardefulla-datamangder:ping` (`/isalive`); without a scope the token only gets
+    `default`. Tokens last 3600 s.
+  - `GET /isalive` returns 200 "OK".
+  - `POST /organisationer` with `{"identitetsbeteckning": "5299999994"}` (the spec's test
+    number, ten digits without dash) returns 200 with `organisationer[]`. Fields include
+    `organisationsnamn`, `organisationsform`, `juridiskForm`, `naringsgrenOrganisation`
+    (SNI), `postadressOrganisation`, `verksamOrganisation`, `avregistreradOrganisation`,
+    `verksamhetsbeskrivning`, `organisationsdatum`.
+  - `POST /dokumentlista` with the same body returns 200 with `dokument[]`;
+    `GET /dokument/{dokumentId}` downloads one document (annual report zip).
+  - Errors use the `ApiError` schema.
 
 ### Access (credentials received 2026-10-17)
 
