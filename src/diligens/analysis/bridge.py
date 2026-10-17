@@ -118,6 +118,7 @@ def _item(
         label=f"{label}: {name}" + (f", {text}" if text else ""),
         accounts=sorted({a for v in members for a in ebitda_lines(v)}),
         voucher_refs=refs,
+        voucher_amounts=[ebitda_effect(v) for v in members],
         amount=sum((ebitda_effect(v) for v in members), ZERO),
         revenue_amount=sum((revenue_effect(v) for v in members), ZERO),
         note=note,
@@ -130,15 +131,27 @@ def _item(
 
 def with_selection(bridge: EbitdaBridge, included: Sequence[bool]) -> EbitdaBridge:
     """The bridge with the advisor's Inkludera choices, one per item then candidate (the
-    order of the Excel bridge), and both totals recomputed from the chosen items."""
+    order of the Excel bridge). Both totals and each voucher's adjustment follow the choice."""
     rows = [*bridge.items, *bridge.candidates]
     if len(included) != len(rows):
         raise ValueError(f"Urvalet har {len(included)} värden men bryggan har {len(rows)} poster.")
     chosen = [
         r.model_copy(update={"included": bool(on)}) for r, on in zip(rows, included, strict=True)
     ]
+    adjustment = {
+        ref: amount if row.included else ZERO
+        for row in chosen
+        for ref, amount in zip(row.voucher_refs, row.voucher_amounts, strict=False)
+    }
+    flags = [
+        f.model_copy(update={"ebitda_adjustment": adjustment[f.voucher_ref]})
+        if f.voucher_ref in adjustment
+        else f
+        for f in bridge.flags
+    ]
     return bridge.model_copy(
         update={
+            "flags": flags,
             "items": chosen[: len(bridge.items)],
             "candidates": chosen[len(bridge.items) :],
             "adjusted": bridge.reported + sum((r.amount for r in chosen if r.included), ZERO),

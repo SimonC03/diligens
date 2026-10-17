@@ -308,6 +308,12 @@ def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
     assert [i.included for i in every] == choice
     assert chosen.adjusted == bridge.reported + sum(i.amount for i in every if i.included)
     assert chosen.adjusted_revenue == bridge.revenue  # the revenue item is switched off
+    # Each voucher's adjustment follows its row: zero when unticked, its effect when ticked.
+    adjustments = {f.voucher_ref: f.ebitda_adjustment for f in chosen.flags}
+    assert all(adjustments[r] == 0 for r in by_cat[("periodisering", "3041")].voucher_refs)
+    for row in chosen.candidates:
+        assert [adjustments[r] for r in row.voucher_refs] == row.voucher_amounts
+        assert sum(row.voucher_amounts) == row.amount
     assert (
         with_selection(
             bridge, [*[i.included for i in bridge.items], *[False] * len(bridge.candidates)]

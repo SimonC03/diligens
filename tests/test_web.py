@@ -238,11 +238,19 @@ def test_bridge_choice_recomputes_and_follows_into_excel(tmp_path: Path, demo: P
         ws = pack["EBITDA brygga"]
         included = {row[1].value: row[5].value for row in ws.iter_rows(min_row=3) if row[1].value}
         assert included["Periodisering"] == 0 and included["Engångspost"] == 1
+        # The flagged items follow the choice too: B473 is left out, with no adjustment.
+        flagged = {row[0].value: row for row in pack["Flaggade poster"].iter_rows(min_row=2)}
+        assert flagged["B473"][9].value == "Ej medräknad" and flagged["B473"][6].value == 0
+        left_out = client.get(f"/analyser/{item_id}/flaggor", params={"status": "Ej medräknad"})
+        assert "B473" in left_out.text and "D277" not in left_out.text
 
         # The memo is rewritten with the choice (template without AI) and is current again.
         client.post(f"/analyser/{item_id}/memo")
         assert "Urvalet i bryggan har ändrats" not in client.get(f"/analyser/{item_id}/memo").text
-        assert views.tsek(expected) in client.get(f"/analyser/{item_id}/fil/memo.md").text
+        memo = client.get(f"/analyser/{item_id}/fil/memo.md").text
+        assert views.tsek(expected) in memo
+        assert "EBITDA-effekt om den tas med -600,0 TSEK" in memo  # listed as left out
+        assert "EBITDA-effekt -600,0" not in memo  # not among the included adjustments
 
         # Back to the proposal clears the choice; a wrong length is refused.
         reset = client.post(

@@ -51,7 +51,14 @@ CATEGORY_LABELS: dict[FlagCategory, str] = {
 NWC_LABELS = {
     "Leverantörsskulder och kortfristiga skulder till kreditinstitut": "Leverantörsskulder",
 }
-STATUS_ORDER = ["Justerad", "Kräver granskning", "Ej justerad, fråga", "Utanför perioden", "Normal"]
+STATUS_ORDER = [
+    "Justerad",
+    "Ej medräknad",
+    "Kräver granskning",
+    "Ej justerad, fråga",
+    "Utanför perioden",
+    "Normal",
+]
 
 _HEADER_FONT = Font(bold=True)
 _HEADER_FILL = PatternFill("solid", fgColor="DDE3EA")
@@ -428,7 +435,12 @@ def flag_statuses(result: AnalysisResult) -> dict[str, str]:
         (bridge.review, "Kräver granskning"),
     ):
         status.update({f.voucher_ref: label for f in flags})
-    status.update({r: "Justerad" for item in bridge.items for r in item.voucher_refs})
+    for item in bridge.items:  # proposed adjustments; the advisor may have unticked one
+        label = "Justerad" if item.included else "Ej medräknad"
+        status.update({r: label for r in item.voucher_refs})
+    for item in bridge.candidates:  # listed for the advisor; ticked means adjusted
+        if item.included:
+            status.update({r: "Justerad" for r in item.voucher_refs})
     return status
 
 

@@ -274,6 +274,9 @@ class BridgeItem(BaseModel):
     label: str = Field(description="Swedish")
     accounts: list[str]
     voucher_refs: list[str]
+    voucher_amounts: list[Decimal] = Field(
+        default_factory=list, description="EBITDA effect per voucher, in voucher_refs order"
+    )
     amount: Decimal = Field(description="positive increases EBITDA")
     revenue_amount: Decimal = Field(
         default=Decimal("0"),

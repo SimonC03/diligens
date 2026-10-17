@@ -109,11 +109,14 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
         "antal_granskning": str(len(bridge.review)),
         "antal_fragor": str(len(result.questions)),
     }
-    items = sorted(bridge.items, key=lambda i: -abs(i.amount))
+    # What is in adjusted EBITDA follows Inkludera, which the advisor may have changed.
+    rows = [*bridge.items, *bridge.candidates]
+    items = sorted((i for i in rows if i.included), key=lambda i: -abs(i.amount))
+    left_out = sorted((i for i in rows if not i.included), key=lambda i: -abs(i.amount))
     facts["urval"] = ", varav de största" if len(items) > MAX_POSTS else ""
     for n, item in enumerate(items[:MAX_POSTS], start=1):
         facts[f"post_{n}"] = f"{item.label}, EBITDA-effekt {_signed(item.amount)}"
-    for n, item in enumerate(sorted(bridge.candidates, key=lambda i: -abs(i.amount))[:2], 1):
+    for n, item in enumerate(left_out[:2], start=1):
         facts[f"kandidat_{n}"] = (
             f"{item.label}, EBITDA-effekt om den tas med {_signed(item.amount)}"
         )
@@ -150,10 +153,10 @@ def _template(facts: dict[str, str]) -> str:
     ]
     posts = [f"post_{n}" for n in range(1, MAX_POSTS + 1) if f"post_{n}" in facts]
     if posts:
-        lines += ["Justeringar med tillräcklig säkerhet, sammantaget {justering}{urval}:", ""]
+        lines += ["Justeringar som ingår i justerad EBITDA, sammantaget {justering}{urval}:", ""]
         lines += [f"- {{{k}}}" for k in posts]
     else:
-        lines.append("Inga justeringar har gjorts med tillräcklig säkerhet.")
+        lines.append("Inga justeringar ingår i justerad EBITDA.")
     candidates = [k for k in ("kandidat_1", "kandidat_2") if k in facts]
     if candidates:
         lines += ["", "Ej medräknat, att bedöma:", ""]
