@@ -214,3 +214,10 @@ Format: `YYYY-MM-DD` decision, reason.
 - 2026-10-17 `analyze` and `screen` print "Klart på N s", so the run time is shown, not
   claimed. The limitations slide is a section in docs/DEMO.md (Swedish text, ready to show
   full screen or paste into any deck) rather than a separate file format.
+- 2026-10-17 Demo wording after review: "ungefär vart tredje bolag saknade en digital
+  årsredovisning" rests on one real screening (SNI 62100, class 6, 61 lookups): 20 had no
+  digital report, 6 had one older than 18 months. "Saknas digitalt" means none in the API,
+  which also covers new companies and late filers, so the script does not say "paper". The
+  flagging eval (five of six, 94 %) is in-sample on the synthetic demo company and is
+  presented as such. Without AI the bridge has no adjustments, so the fallback for the
+  Excel walkthrough is the pack built with AI the day before.
