@@ -9,7 +9,12 @@ from typing import Any
 import httpx
 import pytest
 
-from diligens.sources.bolagsverket import CLIENT_PATHS, BolagsverketClient, BolagsverketError
+from diligens.sources.bolagsverket import (
+    CLIENT_PATHS,
+    BolagsverketClient,
+    BolagsverketError,
+    BolagsverketUnavailable,
+)
 from diligens.sources.ixbrl import parse_ixbrl, read_package
 
 FIXTURES = Path(__file__).parent / "fixtures" / "bolagsverket"
@@ -215,3 +220,26 @@ def test_bolagsverket_client_tokens_documents_and_errors() -> None:
         client.documents("5599000001")
     with pytest.raises(BolagsverketError, match="10 siffror"):
         client.documents("123")
+
+
+def test_bolagsverket_paces_calls_and_honours_retry_after() -> None:
+    server = Server(documents=[])
+    now = [0.0]
+    sleeps: list[float] = []
+    client = BolagsverketClient(
+        "id-not-real",
+        "secret-not-real",
+        transport=httpx.MockTransport(server.handle),
+        clock=lambda: now[0],
+        sleep=sleeps.append,
+    )
+    # Throttled once with a long Retry-After: the wait is capped, then the call succeeds.
+    server.fail_next = [httpx.Response(429, headers={"Retry-After": "120"})]
+    assert client.documents("5599000001") == []
+    assert 10.0 in sleeps  # capped Retry-After
+    assert 0.25 in sleeps  # pacing: at most four calls per second
+
+    # Throttled on every attempt: a clear message, as an outage the screening stops on.
+    server.fail_next = [httpx.Response(429)] * 3
+    with pytest.raises(BolagsverketUnavailable, match="begränsar antalet anrop"):
+        client.documents("5599000001")

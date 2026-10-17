@@ -21,6 +21,8 @@ TOKEN_URL = "https://portal.api.bolagsverket.se/oauth2/token"
 BASE_URL = "https://gw.api.bolagsverket.se/vardefulla-datamangder/v1"
 SCOPE = "vardefulla-datamangder:read vardefulla-datamangder:ping"
 MAX_ATTEMPTS = 3
+MAX_PER_SECOND = 4  # shared by all threads; the API answers 429 when called faster
+MAX_WAIT = 10.0  # seconds; caps a long Retry-After
 TIMEOUT = 15  # seconds per request; keeps a full screening well under a minute
 MAX_DOCUMENTS = 2
 MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
@@ -59,6 +61,8 @@ def _message(response: httpx.Response) -> str:
         detail = f"{body.get('title', '')} ({body.get('instance', '')})".strip()
     except (ValueError, AttributeError):
         detail = ""
+    if status == 429:
+        return "Bolagsverket begränsar antalet anrop just nu (status 429). Försök igen om en stund."
     if status in (401, 403):
         return (
             "Bolagsverket avvisade inloggningen. Kontrollera BOLAGSVERKET_CLIENT_ID och "
@@ -107,6 +111,8 @@ class BolagsverketClient:
         self._token: str | None = None
         self._expires = 0.0
         self._lock = threading.Lock()
+        self._pace_lock = threading.Lock()
+        self._last: float | None = None
 
     def close(self) -> None:
         self._http.close()
@@ -148,6 +154,15 @@ class BolagsverketClient:
             self._expires = self._clock() + expires_in - TOKEN_MARGIN
             return self._token
 
+    def _pace(self) -> None:
+        """At most MAX_PER_SECOND calls, counted across all threads."""
+        with self._pace_lock:
+            if self._last is not None:
+                wait = 1 / MAX_PER_SECOND - (self._clock() - self._last)
+                if wait > 0:
+                    self._sleep(wait)
+            self._last = self._clock()
+
     def _request(
         self, method: str, path: str, json: dict[str, Any] | None = None
     ) -> httpx.Response:
@@ -156,6 +171,7 @@ class BolagsverketClient:
         attempt = 0
         while attempt < MAX_ATTEMPTS:
             token = self._access_token(rejected)
+            self._pace()
             try:
                 response = self._http.request(
                     method,
@@ -176,7 +192,9 @@ class BolagsverketClient:
                 attempt < MAX_ATTEMPTS - 1
             ):
                 attempt += 1
-                self._sleep(2**attempt)
+                retry_after = response.headers.get("Retry-After", "")
+                wait = float(retry_after) if retry_after.isdigit() else 2**attempt
+                self._sleep(min(wait, MAX_WAIT))
                 continue
             break
         assert response is not None
