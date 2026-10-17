@@ -93,10 +93,29 @@ here.
   SCB provides the candidate list.
 - Only digitally filed annual reports are included. Paper filed reports are missing: show
   "Saknas digitalt", never estimate.
-- Endpoints seen in third party clients (verify): token
-  `https://portal.api.bolagsverket.se/oauth2/token`, base
+- Endpoints seen in third party clients (verify): base
   `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1`, test environment under
   `accept2`. Operations for organisations, document list and document download (zip).
+
+### Access (credentials received 2026-10-17)
+
+Confirmed by Bolagsverket when the credentials were issued:
+
+- Application with access to the API `VärdefullaDatamängder`. API description on the
+  Developer Portal: https://portal.api.bolagsverket.se/devportal/apis/ff8f9a91-1fdd-4705-8836-c1906581162f
+  (all APIs: https://portal.api.bolagsverket.se/devportal/apis).
+- Access token through OAuth2 Client Credentials Grant
+  (https://datatracker.ietf.org/doc/html/rfc6749#section-4.4). Token endpoint:
+  `https://portal.api.bolagsverket.se/oauth2/token`.
+- Credentials arrive as an encrypted zip with two lines: client id, then client secret. The
+  password comes by separate SMS. They go into `.env` only (`BOLAGSVERKET_CLIENT_ID`,
+  `BOLAGSVERKET_CLIENT_SECRET`), never into the repo, logs or chat.
+- An inactive account is closed after 6 months. Make at least one call before 2027-04-17,
+  then keep it in use.
+- Report lost or leaked credentials to Bolagsverket at once (contact form below).
+- Service status: https://bolagsverket.se/driftsinformation.232.html
+- News and releases (RSS): https://bolagsverket.se/apierochoppnadata/nyheterochreleaserforvaraapier/prenumererapanyheterochreleaserviarssflode.5499.html
+- Questions and fault reports: https://www.bolagsverket.se/apierochoppnadata/apiforaktuellforetagsinformationbetaversion/kontaktaossomapietmedaktuellforetagsinformationbetaversionxmlochaviseringar.3996.html
 - The full "API för att hämta företagsinformation" costs money and needs an agreement.
   Do not use it.
 
