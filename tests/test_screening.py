@@ -156,7 +156,7 @@ def test_screen_writes_long_list_with_sources_and_missing_reports(
 
     assert run.exit_code == 0, run.output
     assert "3 kandidater av 6 bolag" in run.output
-    assert re.search(r"Klart på \d+ s", run.output)
+    assert re.search(r"Klart på \d+,\d s", run.output)
     wb = load_workbook(tmp_path / "long_list.xlsx")
     assert wb.sheetnames == ["Long list", "Kriterier"]
     ws = wb["Long list"]

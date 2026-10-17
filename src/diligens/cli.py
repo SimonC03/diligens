@@ -95,7 +95,7 @@ def analyze(
     typer.secho("\nUnderlag", bold=True)
     typer.echo(f"  {workbook}")
     typer.echo(f"  {memo}")
-    typer.echo(f"\nKlart på {time.monotonic() - start:.0f} s")
+    typer.echo(f"\n{_elapsed(start)}")
     if not result.reconciliation.ok:
         raise typer.Exit(code=EXIT_RECONCILIATION)
 
@@ -119,6 +119,11 @@ def _tsek(value: Decimal | None) -> str:
 
 def _share(value: Decimal | None) -> str:
     return "-" if value is None else f"{value * 100:.1f} %".replace(".", ",")
+
+
+def _elapsed(start: float) -> str:
+    """Run time since `start`, excluding Python and uv start-up."""
+    return f"Klart på {time.monotonic() - start:.1f} s".replace(".", ",")
 
 
 def _print_summary(result: AnalysisResult) -> None:
@@ -233,7 +238,7 @@ def screen(
         raise typer.Exit(code=EXIT_ERROR) from exc
     _print_screening(result)
     typer.echo(f"\nLong list: {path}")
-    typer.echo(f"Klart på {time.monotonic() - start:.0f} s")
+    typer.echo(f"\n{_elapsed(start)}")
 
 
 def _print_screening(result: ScreeningResult) -> None:

@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 from typer.testing import CliRunner
 
+import diligens.cli as cli
 from diligens.agent.memo import _template, memo_facts, write_memo
 from diligens.cli import app
 from diligens.config import Settings
@@ -298,7 +299,7 @@ def test_cli_writes_workbook_that_opens_with_formulas(tmp_path: Path) -> None:
     assert run.exit_code == 0, run.output
     assert (out / "dd_pack.xlsx").exists() and (out / "memo.md").exists()
     assert "dd_pack.xlsx" in run.output
-    assert re.search(r"Klart på \d+ s", run.output)  # the demo shows the run time
+    assert re.search(r"Klart på \d+,\d s", run.output)  # the demo shows the run time
     wb = load_workbook(out / "dd_pack.xlsx")
     assert wb.sheetnames == SHEETS
     formulas = sum(
@@ -413,3 +414,22 @@ def test_live_memo(analysed: tuple[AnalysisResult, Path]) -> None:
     assert "## Sammanfattning" in memo and "{" not in memo
     assert _numbers(memo) <= allowed
     assert len(memo.split()) <= 450
+
+
+def test_cli_reports_run_time_and_exit_2_when_reconciliation_is_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sie = tmp_path / "demo_bolag.se"
+    generate_demo_company(42, sie)
+
+    def with_unmapped_account(*args: Any, **kwargs: Any) -> Any:
+        result = run_analysis(*args, **kwargs)
+        broken = result.reconciliation.model_copy(update={"unmapped_accounts": ["9999"]})
+        return result.model_copy(update={"reconciliation": broken})
+
+    monkeypatch.setattr(cli, "run_analysis", with_unmapped_account)
+    run = CliRunner().invoke(app, ["analyze", str(sie), "--out", str(tmp_path), "--no-llm"])
+
+    assert run.exit_code == 2  # the pack is written but flagged as not reconciled
+    assert re.search(r"Klart på \d+,\d s", run.output)
+    assert (tmp_path / "dd_pack.xlsx").exists()
