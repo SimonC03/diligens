@@ -295,6 +295,11 @@ def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
     assert all(i.source_ref and i.voucher_refs for i in bridge.items)
     assert bridge.adjusted == bridge.reported + Decimal("470000.00")
     assert bridge.adjusted == bridge.reported + sum(i.amount for i in bridge.items)
+    # Only the sales invoice moved out of the period touches revenue; cost items do not.
+    assert by_cat[("periodisering", "3041")].revenue_amount == Decimal("-600000.00")
+    assert by_cat[("agarrelaterad", "6550")].revenue_amount == 0
+    assert bridge.revenue == kpis.ltm["nettoomsattning"].values["2025-12"]
+    assert bridge.adjusted_revenue == bridge.revenue - Decimal("600000.00")
 
     assert {f.voucher_ref for f in bridge.review} == set(a[3].voucher_refs)
     assert [f.voucher_ref for f in bridge.not_adjusted] == [stray]

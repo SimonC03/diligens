@@ -11,7 +11,7 @@ import re
 from collections import defaultdict
 from decimal import Decimal
 
-from diligens.analysis.mapping import is_ebitda_account
+from diligens.analysis.mapping import is_ebitda_account, is_revenue_account
 from diligens.analysis.statements import month_key, months_of
 from diligens.models import (
     REVIEW_CONFIDENCE,
@@ -55,15 +55,28 @@ def ebitda_effect(voucher: Voucher) -> Decimal:
     return sum(ebitda_lines(voucher).values(), ZERO)
 
 
-def _period(kpis: KPIs, ledger: Ledger) -> tuple[str, Decimal, list[str]]:
+def revenue_effect(voucher: Voucher) -> Decimal:
+    """Raw net of the voucher's Nettoomsättning lines; adding it back removes it from revenue."""
+    return sum((v for a, v in ebitda_lines(voucher).items() if is_revenue_account(a)), ZERO)
+
+
+def _period(kpis: KPIs, ledger: Ledger) -> tuple[str, Decimal, Decimal, list[str]]:
+    """Basis, EBITDA, Nettoomsättning and the months of the bridge period."""
     month = kpis.months[-1]
     ltm = kpis.ltm["ebitda"].values.get(month)
     if ltm is not None:
-        return "LTM", ltm, kpis.months[-12:]
+        revenue = kpis.ltm["nettoomsattning"].values.get(month) or ZERO
+        return "LTM", ltm, revenue, kpis.months[-12:]
     year = next(fy for fy in ledger.fiscal_years if month in set(months_of(fy)))
     in_year = set(months_of(year))
     period = [m for m in kpis.months if m in in_year and m <= month]
-    return "YTD", kpis.ytd["ebitda"].values[month] or ZERO, period
+    ytd = kpis.ytd
+    return (
+        "YTD",
+        ytd["ebitda"].values[month] or ZERO,
+        ytd["nettoomsattning"].values[month] or ZERO,
+        period,
+    )
 
 
 _CANDIDATE_LABELS: dict[FlagCategory, str] = {
@@ -105,6 +118,7 @@ def _item(
         accounts=sorted({a for v in members for a in ebitda_lines(v)}),
         voucher_refs=refs,
         amount=sum((ebitda_effect(v) for v in members), ZERO),
+        revenue_amount=sum((revenue_effect(v) for v in members), ZERO),
         note=note,
         source_ref=(
             f"Verifikat {shown}, EBITDA-konton på verifikaten, {period[0]} till {period[-1]}"
@@ -119,7 +133,7 @@ def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge
     Related party items and low confidence items of an adjusting category are listed as
     candidates with included=False, so the advisor can switch them on in the Excel bridge.
     """
-    basis, reported, period = _period(kpis, ledger)
+    basis, reported, revenue, period = _period(kpis, ledger)
     in_period = set(period)
 
     vouchers = {v.ref: v for v in ledger.vouchers}
@@ -187,6 +201,8 @@ def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge
         reported=reported,
         items=items,
         adjusted=reported + sum((i.amount for i in items), ZERO),
+        revenue=revenue,
+        adjusted_revenue=revenue + sum((i.revenue_amount for i in items), ZERO),
         review=review,
         not_adjusted=not_adjusted,
         outside_period=outside,

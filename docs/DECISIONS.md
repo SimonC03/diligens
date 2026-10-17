@@ -206,3 +206,24 @@ Format: `YYYY-MM-DD` decision, reason.
   a real run with 61 tied lookups got HTTP 429 at full speed. Paced, the same run finished
   in 39 s with every lookup answered. A 429 that persists after retries counts as
   "Bolagsverket svarar inte" and stops further lookups, with a message about throttling.
+- 2026-10-17 Demo: the DD pack and a short screening are both shown live in five minutes.
+  The screening starts in a second terminal right after the analysis and runs while the
+  Excel walkthrough goes on, so its 40 s never stall the demo. A warm run into
+  `output/forberedd/` the day before is the fallback for every live step. Measured on the
+  demo laptop: analyze 33 s with AI, 2 s without; screen 39 s.
+- 2026-10-17 `analyze` and `screen` print "Klart på N s", so the run time is shown, not
+  claimed. The limitations slide is a section in docs/DEMO.md (Swedish text, ready to show
+  full screen or paste into any deck) rather than a separate file format.
+- 2026-10-17 Demo wording after review: "ungefär vart tredje bolag saknade en digital
+  årsredovisning" rests on one real screening (SNI 62100, class 6, 61 lookups): 20 had no
+  digital report, 6 had one older than 18 months. "Saknas digitalt" means none in the API,
+  which also covers new companies and late filers, so the script does not say "paper". The
+  flagging eval (five of six, 94 %) is in-sample on the synthetic demo company and is
+  presented as such. Without AI the bridge has no adjustments, so the fallback for the
+  Excel walkthrough is the pack built with AI the day before.
+- 2026-10-17 Justerad EBITDA-marginal is adjusted EBITDA over adjusted Nettoomsättning, so
+  numerator and denominator move together (DOMAIN.md section 4). Each bridge item carries
+  the part of its amount on 3000 to 3699; the bridge sheet shows it as "Varav
+  nettoomsättning TSEK" and computes Justerad nettoomsättning with the same Inkludera
+  switches as adjusted EBITDA. On the demo the periodisering of B473 lowers revenue by
+  600 TSEK, so the margin is 14,0 % rather than 13,8 % on reported revenue.

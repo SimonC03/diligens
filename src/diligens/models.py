@@ -275,6 +275,10 @@ class BridgeItem(BaseModel):
     accounts: list[str]
     voucher_refs: list[str]
     amount: Decimal = Field(description="positive increases EBITDA")
+    revenue_amount: Decimal = Field(
+        default=Decimal("0"),
+        description="part of amount on Nettoomsättning accounts; positive increases revenue",
+    )
     note: str | None = None
     source_ref: str
     included: bool = Field(
@@ -291,6 +295,10 @@ class EbitdaBridge(BaseModel):
     reported: Decimal
     items: list[BridgeItem]
     adjusted: Decimal
+    revenue: Decimal = Field(description="Nettoomsättning for the same period")
+    adjusted_revenue: Decimal = Field(
+        description="revenue plus revenue_amount of the included items (DOMAIN.md section 4)"
+    )
     review: list[Flag] = Field(description="confidence below 0.7: Kräver granskning")
     not_adjusted: list[Flag] = Field(
         description="confident narstaende and avvikelse flags: questions, no adjustment"

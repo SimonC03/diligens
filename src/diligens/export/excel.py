@@ -237,11 +237,24 @@ def _refs(refs: list[str]) -> str:
     return ", ".join(refs)
 
 
-def _bridge(ws: Worksheet, result: AnalysisResult, rr_rows: dict[str, int], period_col: str) -> int:
-    """Write EBITDA brygga; return the row of Justerad EBITDA."""
+def _bridge(
+    ws: Worksheet, result: AnalysisResult, rr_rows: dict[str, int], period_col: str
+) -> tuple[int, int]:
+    """Write EBITDA brygga; return the rows of Justerad EBITDA and Justerad nettoomsättning."""
     bridge = result.bridge
     _header(
-        ws, ["Post", "Kategori", "Konton", "Verifikat", "Belopp TSEK", "Inkludera", "Not", "Källa"]
+        ws,
+        [
+            "Post",
+            "Kategori",
+            "Konton",
+            "Verifikat",
+            "Belopp TSEK",
+            "Inkludera",
+            "Varav nettoomsättning TSEK",
+            "Not",
+            "Källa",
+        ],
     )
     basis = "LTM" if bridge.basis == "LTM" else "hittills i år"
     ws.append(
@@ -251,6 +264,7 @@ def _bridge(ws: Worksheet, result: AnalysisResult, rr_rows: dict[str, int], peri
             None,
             None,
             f"='RR månad'!{period_col}{rr_rows['EBITDA']}",
+            None,
             None,
             None,
             "RR månad, raden EBITDA, periodkolumnen",
@@ -266,6 +280,7 @@ def _bridge(ws: Worksheet, result: AnalysisResult, rr_rows: dict[str, int], peri
                 _refs(item.voucher_refs),
                 _tsek(item.amount),
                 1 if item.included else 0,
+                _tsek(item.revenue_amount),
                 item.note or "",
                 item.source_ref,
             ]
@@ -280,15 +295,48 @@ def _bridge(ws: Worksheet, result: AnalysisResult, rr_rows: dict[str, int], peri
             None,
             formula,
             None,
+            None,
             "Sätt Inkludera till 1 eller 0 för att ta med eller utesluta en post.",
             "Formel: rapporterad EBITDA plus belopp gånger inkludera",
         ]
     )
     _bold(ws, adjusted)
-    _format(ws, [5], range(2, adjusted + 1), TSEK)
+    period = f"{bridge.period[0]} till {bridge.period[1]}"
+    ws.append(
+        [
+            f"Rapporterad nettoomsättning ({basis}, {period})",
+            None,
+            None,
+            None,
+            f"='RR månad'!{period_col}{rr_rows['Nettoomsättning']}",
+            None,
+            None,
+            None,
+            "RR månad, raden Nettoomsättning, periodkolumnen",
+        ]
+    )
+    revenue = ws.max_row
+    ws.append(
+        [
+            "Justerad nettoomsättning",
+            None,
+            None,
+            None,
+            f"=E{revenue}+SUMPRODUCT(G3:G{adjusted - 1},F3:F{adjusted - 1})"
+            if items
+            else f"=E{revenue}",
+            None,
+            None,
+            "Bas för justerad EBITDA-marginal; poster på konto 3000 till 3699 följer Inkludera.",
+            "Formel: rapporterad nettoomsättning plus varav nettoomsättning gånger inkludera",
+        ]
+    )
+    adjusted_revenue = ws.max_row
+    _bold(ws, adjusted_revenue)
+    _format(ws, [5, 7], range(2, adjusted_revenue + 1), TSEK)
     ws.freeze_panes = "A2"
-    _widths(ws, {1: 50, 4: 40, 7: 50, 8: 60})
-    return adjusted
+    _widths(ws, {1: 50, 4: 40, 7: 16, 8: 50, 9: 60})
+    return adjusted, adjusted_revenue
 
 
 def _working_capital(ws: Worksheet, result: AnalysisResult) -> tuple[int, int | None]:
@@ -538,12 +586,13 @@ def _summary(
     result: AnalysisResult,
     rr_rows: dict[str, int],
     period_col: str,
-    adjusted_row: int,
+    adjusted_rows: tuple[int, int],
     nwc: tuple[int, int | None],
     net_debt_row: int,
 ) -> None:
     kpis, bridge = result.kpis, result.bridge
     basis = "LTM" if bridge.basis == "LTM" else "hittills i år"
+    adjusted_row, adjusted_revenue_row = adjusted_rows
     months = result.statements.months
     last_col = _col(len(months) + 1)
     _header(ws, ["Uppgift", "Värde", "Källa"])
@@ -591,10 +640,17 @@ def _summary(
         TSEK,
     )
     add(
+        "justerad_oms",
+        f"Justerad nettoomsättning {basis}",
+        f"='EBITDA brygga'!E{adjusted_revenue_row}",
+        "EBITDA brygga, intäktsposter med valda Inkludera",
+        TSEK,
+    )
+    add(
         "justerad_marginal",
         f"Justerad EBITDA-marginal {basis}",
-        f'=IFERROR(B{at["justerad"]}/B{at["oms"]},"")',
-        "Formel: justerad EBITDA delat med nettoomsättning",
+        f'=IFERROR(B{at["justerad"]}/B{at["justerad_oms"]},"")',
+        "Formel: justerad EBITDA delat med justerad nettoomsättning",
         PERCENT,
     )
     if len(months) >= 24:
@@ -690,13 +746,15 @@ def export_dd_pack(result: AnalysisResult, out_dir: Path) -> Path:
 
     rr_rows, period_col = _income_statement(sheets["RR månad"], result)
     _balance_sheet(sheets["BR månad"], result)
-    adjusted_row = _bridge(sheets["EBITDA brygga"], result, rr_rows, period_col)
+    adjusted_rows = _bridge(sheets["EBITDA brygga"], result, rr_rows, period_col)
     nwc = _working_capital(sheets["Rörelsekapital"], result)
     net_debt_row = _net_debt(sheets["Nettoskuld"], result)
     _flagged(sheets["Flaggade poster"], result)
     _questions(sheets["DD frågor"], result)
     _reconciliation(sheets["Avstämning"], result)
-    _summary(sheets["Sammanfattning"], result, rr_rows, period_col, adjusted_row, nwc, net_debt_row)
+    _summary(
+        sheets["Sammanfattning"], result, rr_rows, period_col, adjusted_rows, nwc, net_debt_row
+    )
     _sources(sheets["Källor"], result)
     # openpyxl stores no computed values; make Excel calculate on open (also in Protected View).
     wb.calculation.fullCalcOnLoad = True

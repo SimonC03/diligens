@@ -1,5 +1,6 @@
 """Diligens CLI. Each command maps to a milestone in docs/PLAN.md."""
 
+import time
 from collections import Counter
 from contextlib import ExitStack
 from decimal import Decimal
@@ -70,6 +71,7 @@ def analyze(
 
     Exitkod 0: klart. 1: fel i indata eller AI-konfiguration. 2: avstämningen avviker.
     """
+    start = time.monotonic()
     try:
         result = run_analysis(sie_file, use_llm=not no_llm, related_parties=narstaende or [])
     except (ValueError, OSError) as exc:
@@ -93,6 +95,7 @@ def analyze(
     typer.secho("\nUnderlag", bold=True)
     typer.echo(f"  {workbook}")
     typer.echo(f"  {memo}")
+    typer.echo(f"\n{_elapsed(start)}")
     if not result.reconciliation.ok:
         raise typer.Exit(code=EXIT_RECONCILIATION)
 
@@ -116,6 +119,11 @@ def _tsek(value: Decimal | None) -> str:
 
 def _share(value: Decimal | None) -> str:
     return "-" if value is None else f"{value * 100:.1f} %".replace(".", ",")
+
+
+def _elapsed(start: float) -> str:
+    """Run time since `start`, excluding Python and uv start-up."""
+    return f"Klart på {time.monotonic() - start:.1f} s".replace(".", ",")
 
 
 def _print_summary(result: AnalysisResult) -> None:
@@ -207,6 +215,7 @@ def screen(
         counties=[c.strip().zfill(2) for c in lan or []],
     )
     settings = get_settings()
+    start = time.monotonic()
     try:
         with ExitStack() as clients:
             scb = clients.enter_context(make_scb_client(settings))
@@ -229,6 +238,7 @@ def screen(
         raise typer.Exit(code=EXIT_ERROR) from exc
     _print_screening(result)
     typer.echo(f"\nLong list: {path}")
+    typer.echo(f"\n{_elapsed(start)}")
 
 
 def _print_screening(result: ScreeningResult) -> None:
