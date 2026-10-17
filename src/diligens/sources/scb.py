@@ -13,6 +13,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import httpx
+from pydantic import ValidationError
 
 from diligens.config import Settings
 from diligens.models import ScbUnit, ScbUnitFull
@@ -21,6 +22,8 @@ BASE_URL = "https://apiafr.scb.se"
 MAX_PER_SECOND = 5
 MAX_ATTEMPTS = 3
 MAX_LIMIT = 5000
+MAX_WAIT = 10.0  # seconds; caps a long Retry-After
+UNEXPECTED = "SCB gav ett oväntat svar. Försök igen senare."
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 # Spec path template to response schema, for every endpoint the client uses. A test checks
@@ -106,6 +109,12 @@ class ScbClient:
     def close(self) -> None:
         self._http.close()
 
+    def __enter__(self) -> "ScbClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def _throttle(self) -> None:
         if self._last is not None:
             wait = 1 / MAX_PER_SECOND - (self._clock() - self._last)
@@ -132,15 +141,19 @@ class ScbClient:
             retryable = response.status_code == 429 or response.status_code >= 500
             if retryable and attempt < MAX_ATTEMPTS - 1:
                 retry_after = response.headers.get("Retry-After", "")
-                self._sleep(float(retry_after) if retry_after.isdigit() else 2**attempt)
+                wait = float(retry_after) if retry_after.isdigit() else 2**attempt
+                self._sleep(min(wait, MAX_WAIT))
                 continue
             break
         assert response is not None
         if response.is_success:
-            return response.json()
+            try:
+                return response.json()
+            except ValueError as exc:
+                raise ScbError(UNEXPECTED) from exc
         try:
             detail = str(response.json().get("detail", ""))
-        except ValueError:
+        except (ValueError, AttributeError):
             detail = response.text[:200]
         raise ScbError(_message(response.status_code, detail))
 
@@ -149,7 +162,10 @@ class ScbClient:
         return info
 
     def count(self, kind: Filter, code: str | int) -> int:
-        return int(self._get(f"/v1/juridiskaenheter/{kind}/{code}/count")["count"])
+        try:
+            return int(self._get(f"/v1/juridiskaenheter/{kind}/{code}/count")["count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ScbError(UNEXPECTED) from exc
 
     def legal_units(
         self, kind: Filter, code: str | int, limit: int = MAX_LIMIT
@@ -158,19 +174,29 @@ class ScbClient:
         params: dict[str, Any] = {"limit": min(limit, MAX_LIMIT)}
         while True:
             page = self._get(f"/v1/juridiskaenheter/{kind}/{code}", params)
-            for raw in page.get("jes", []):
-                yield ScbUnit.model_validate(raw)
-            pagination = page.get("pagination") or {}
-            if not pagination.get("hasMore"):
+            try:
+                units = [ScbUnit.model_validate(raw) for raw in page.get("jes") or []]
+                pagination = page.get("pagination") or {}
+                more = bool(pagination.get("hasMore"))
+                cursor = pagination.get("nextCursorId") if more else None
+            except (ValidationError, KeyError, TypeError, AttributeError) as exc:
+                raise ScbError(UNEXPECTED) from exc
+            yield from units
+            if not more or cursor is None:
                 return
-            params["cursorId"] = pagination["nextCursorId"]
+            params["cursorId"] = cursor
 
     def full(self, org_nr: str) -> ScbUnitFull:
-        return ScbUnitFull.model_validate(
-            self._get(f"/v1/juridiskaenheter/{pe_org_nr(org_nr)}/full")
-        )
+        raw = self._get(f"/v1/juridiskaenheter/{pe_org_nr(org_nr)}/full")
+        try:
+            return ScbUnitFull.model_validate(raw)
+        except (ValidationError, KeyError, TypeError) as exc:
+            raise ScbError(UNEXPECTED) from exc
 
     def code_table(self, name: CodeTable) -> dict[str, str]:
         """Code to Swedish text; codes as strings, since responses send them as strings."""
         rows = self._get(f"/v1/kodtabeller/{name}")
-        return {str(row["kod"]): str(row["klartext"]).strip() for row in rows}
+        try:
+            return {str(row["kod"]): str(row["klartext"]).strip() for row in rows}
+        except (KeyError, TypeError) as exc:
+            raise ScbError(UNEXPECTED) from exc

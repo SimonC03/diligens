@@ -435,6 +435,9 @@ class AnnualReport(BaseModel):
     period_start: dt.date
     period_end: dt.date
     figures: dict[str, Figure]
+    notes: list[str] = Field(
+        default_factory=list, description="Swedish, e.g. a fiscal year that is not 12 months"
+    )
 
 
 class ScreeningCriteria(BaseModel):
