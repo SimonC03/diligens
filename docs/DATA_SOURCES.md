@@ -78,10 +78,32 @@ Code tables: `naringsgrenkoder` (also `avdelningKod`, `avdelningText`), `omsklko
    (aktiebolag for annual reports).
 4. Hand org numbers to Bolagsverket for annual reports.
 
-Unverified until tested with a key: the exact `naringsgrenKod` format (5 digit SNI 2007 or
-SNI 2025), whether `peOrgNr` takes 10 or 12 digits and with or without hyphen, the
-`omsKl` and `anstKl` class boundaries. Check the code tables first and record the answers
-here.
+### Verified with our key (2026-10-17)
+
+- `GET /v1/api-info` returns 200 with `senasteUppdateringsDatum` (data refreshed nightly).
+- `naringsgrenKod` is a 5 digit SNI 2025 code as a string (`62100`, `62201`, `62202`,
+  `62900`; SNI 2007 codes like `62010` do not exist). 836 codes, `00000` = missing.
+- `peOrgNr` must be exactly 12 digits, no hyphen ("Ogiltigt PeOrgNr. Måste vara 12
+  siffror." otherwise). Legal entities have prefix `16` + the 10 digit organisation number;
+  `orgNr` in responses is the 10 digit form. Bolagsverket takes the 10 digits.
+- `omsklkoder` (int): 0 `< 1 tkr`, 1 `1-499`, 2 `500-999`, 3 `1 000-4 999`, 4 `5 000-9 999`,
+  5 `10 000-19 999`, 6 `20 000-49 999`, 7 `50 000-99 999`, 8 `100 000-499 999`,
+  9 `500 000-999 999`, 10 `1-5 MSEK x 1000`, 11 and 12 above (tkr).
+- `anstklkoder` (int): 0 missing, 1 `0`, 2 `1-4`, 3 `5-9`, 4 `10-19`, 5 `20-49`, 6 `50-99`,
+  7 `100-199`, 8 `200-499`, 9 `500-999`, 10 and up larger.
+- `lankoder` are two digit strings (`01` Stockholm, `00` unknown); `jurformkoder` strings
+  (`49` Övriga aktiebolag, `10` enskild näringsidkare); `ftgstatkoder` `1` = verksam,
+  `9` = no longer active, `0` = never active.
+- List endpoints return partial data that already carries `anstKl`, `lanSate`, `jurform`,
+  `ftgStat`, `primarNaringsgren`; only `omsKl` needs `/full` or the
+  `omsattningsklass/{kod}` list. Counts: SNI 62100 has 31 623 legal entities, turnover class
+  6 has 25 160.
+- Cursor pagination works as specified (`limit`, `nextCursorId`, `hasMore`).
+- `/full` for a sole trader returned `omsKl` 0 and `omsAr` 0 (no turnover figure).
+
+Screening plan from this: page through `naringsgren/{sni}` and `omsattningsklass/{kod}` with
+`limit=5000` and intersect on `peOrgNr`, then filter on the partial fields in code. That is
+about a dozen calls for a large industry instead of one `/full` call per company.
 
 ## Bolagsverket API för värdefulla datamängder (free)
 
