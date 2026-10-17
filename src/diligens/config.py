@@ -33,10 +33,14 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _blank_is_missing(cls, value: object) -> object:
-        """`KEY=` in .env means not configured, not an empty secret."""
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
+        """`KEY=` in .env means not configured, not an empty secret. Quotes around a value
+        are removed: `docker run --env-file` passes KEY="value" with them."""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+            text = text[1:-1].strip()
+        return text or None
 
     @property
     def llm_enabled(self) -> bool:

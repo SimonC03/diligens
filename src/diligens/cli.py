@@ -267,6 +267,13 @@ def run_app(
     oppna: Annotated[
         bool, typer.Option("--oppna/--inte-oppna", help="Öppna webbläsaren när appen startat.")
     ] = True,
+    host: Annotated[
+        str,
+        typer.Option(
+            help="Adress att lyssna på. Ändra bara i en container (0.0.0.0), där Docker "
+            "publicerar porten på datorns 127.0.0.1."
+        ),
+    ] = "127.0.0.1",
 ) -> None:
     """Starta Diligens i webbläsaren. Appen körs bara på den här datorn (127.0.0.1)."""
     import uvicorn
@@ -275,7 +282,7 @@ def run_app(
 
     with socket.socket() as probe:
         try:
-            probe.bind(("127.0.0.1", port))
+            probe.bind((host, port))
         except OSError as exc:
             typer.secho(
                 f"Port {port} används redan, kanske av en Diligens som redan körs. Öppna "
@@ -290,7 +297,7 @@ def run_app(
     typer.echo("Avsluta med Ctrl+C.")
     if oppna:
         threading.Timer(1.0, webbrowser.open, args=[url]).start()
-    uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

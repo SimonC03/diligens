@@ -1,0 +1,21 @@
+# docker compose up -d   then open http://127.0.0.1:8501
+services:
+  diligens:
+    build: .
+    image: diligens:latest
+    # Keys are read from .env when the container starts and are never part of the image.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # The container's own path, whatever .env says for running outside Docker.
+      DILIGENS_WORKSPACE: /app/data/private/arbetsyta
+    ports:
+      # Published on this computer only, like the app outside Docker.
+      - "127.0.0.1:8501:8501"
+    volumes:
+      # The workspace (uploaded SIE files, results, long lists) and exports stay on the host,
+      # in folders that git ignores.
+      - ./data/private:/app/data/private
+      - ./output:/app/output
+    restart: unless-stopped

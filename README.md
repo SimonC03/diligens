@@ -42,6 +42,46 @@ the workspace folder (`DILIGENS_WORKSPACE`, default `data/private/arbetsyta`, gi
 Every page works without JavaScript; scripts only add progress updates, the bridge
 check boxes, the voucher drawer and the theme choice.
 
+## Docker
+
+Everything also runs in a container; only Docker is needed on the computer.
+
+```bash
+docker compose up -d --build          # the app on http://127.0.0.1:8501
+docker compose logs -f                # what it is doing
+docker compose down                   # stop it
+```
+
+- Keys are read from `.env` when the container starts; they are never part of the image.
+  The build context is an allowlist (`.dockerignore`), so `.env`, client data and outputs
+  are never sent to Docker.
+- The port is published on `127.0.0.1` only, as when the app runs without Docker.
+- The workspace and exports stay on the computer: `./data/private` and `./output` are
+  mounted into the container, so analyses and screenings survive a rebuild.
+- The image contains the synthetic demo company.
+
+The CLI and the MCP server run in the same image. Paths are the container's: files in
+`./data/private` on the computer are under `data/private/` in the container.
+
+```bash
+docker compose run --rm diligens diligens analyze data/demo/demo_bolag.se --out output/
+docker compose run --rm diligens diligens screen --sni 62100 --oms-kl 6 --out output/
+```
+
+MCP client configuration (stdio, from the project folder):
+
+```json
+{
+  "mcpServers": {
+    "diligens": {
+      "command": "docker",
+      "args": ["compose", "-f", "C:/ABSOLUTE/PATH/TO/diligens/compose.yaml",
+               "run", "--rm", "-i", "-T", "diligens", "diligens-mcp"]
+    }
+  }
+}
+```
+
 ## Quick start
 
 ```bash

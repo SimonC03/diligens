@@ -72,3 +72,16 @@ def test_cli_generate(tmp_path: Path) -> None:
     result = CliRunner().invoke(app, ["generate", "--out", str(out), "--seed", "7"])
     assert result.exit_code == 0, result.output
     assert out.exists() and (tmp_path / "facit.json").exists()
+
+
+def test_quoted_keys_from_docker_env_files_are_unquoted(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # `docker run --env-file .env` passes KEY="value" with the quotes; .env readers do not.
+    monkeypatch.setenv("SCB_API_KEY", '"key-not-real"')
+    monkeypatch.setenv("BOLAGSVERKET_CLIENT_ID", "'id-not-real'")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", '""')
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.scb_api_key is not None
+    assert settings.scb_api_key.get_secret_value() == "key-not-real"
+    assert settings.bolagsverket_client_id is not None
+    assert settings.bolagsverket_client_id.get_secret_value() == "id-not-real"
+    assert settings.anthropic_api_key is None  # quoted empty is still missing
