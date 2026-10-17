@@ -1,0 +1,70 @@
+[
+ {
+  "kod": 0,
+  "klartext": "Uppgift saknas"
+ },
+ {
+  "kod": 1,
+  "klartext": "0 anställda"
+ },
+ {
+  "kod": 2,
+  "klartext": "1-4 anställda"
+ },
+ {
+  "kod": 3,
+  "klartext": "5-9 anställda"
+ },
+ {
+  "kod": 4,
+  "klartext": "10-19 anställda"
+ },
+ {
+  "kod": 5,
+  "klartext": "20-49 anställda"
+ },
+ {
+  "kod": 6,
+  "klartext": "50-99 anställda"
+ },
+ {
+  "kod": 7,
+  "klartext": "100-199 anställda"
+ },
+ {
+  "kod": 8,
+  "klartext": "200-499 anställda"
+ },
+ {
+  "kod": 9,
+  "klartext": "500-999 anställda"
+ },
+ {
+  "kod": 10,
+  "klartext": "1000-1499 anställda"
+ },
+ {
+  "kod": 11,
+  "klartext": "1500-1999 anställda"
+ },
+ {
+  "kod": 12,
+  "klartext": "2000-2999 anställda"
+ },
+ {
+  "kod": 13,
+  "klartext": "3000-3999 anställda"
+ },
+ {
+  "kod": 14,
+  "klartext": "4000-4999 anställda"
+ },
+ {
+  "kod": 15,
+  "klartext": "5000-9999 anställda"
+ },
+ {
+  "kod": 16,
+  "klartext": "10000- anställda"
+ }
+]

@@ -1,0 +1,6420 @@
+{
+ "openapi": "3.0.4",
+ "info": {
+  "title": "SCB:s allmänna företagsregister API",
+  "description": "### Översikt\nDetta API tillhandahåller data från SCB:s allmänna företagsregister.\n\nI API:ets JE-kontrakt finns information om:\n* samtliga juridiska personer i Sverige\n* fysiska personer som har ett inregistrerat företagsnamn och/eller är registrerade för moms och/eller F-skatt och/eller som arbetsgivare\n* dödsbon som är registrerade för moms och/eller som arbetsgivare.\r\n\n\n\nI API:ets AE-kontrakt finns information om:\n* registrerade arbetsställen i Sverige. Med arbetsställe avses varje adress, fastighet eller grupp av fastigheter där företaget bedriver verksamhet. Alla företag har minst ett arbetsställe.\n\nI API:et finns även kodtabeller med tillhörande klartexter.\n\n### Avsikt och beteende\nAPI:t är läsorienterat och används för att söka, filtrera och hämta registerdata på ett förutsägbart och versionsstyrt sätt.\n`arbetsstallen` och `juridiskaenheter` används för uppslag av detaljer samt för filtrerade listor och tillhörande antal-anrop.\n`kodtabeller` används för referensdata till filter och klassificeringar.\n\nSvar för listanrop pagineras via `limit` och `cursorId` och ska traverseras sekventiellt tills `pagination.hasMore` är false.\n\nVid ogiltiga parametrar returneras valideringsfel, och vid överbelastning kan tillfällig begränsning ske med HTTP 429.\n\n### API-kontrakt\nDen publicerade OpenAPI-specifikationen är det normativa kontraktet mellan API-producent och API-konsument.\nKontraktsändringar hanteras via versionshantering av API:t.\n\n### Tillgänglighet\nAPI:t är inte tillgängligt i 30 minuter från kl. 04:00 varje natt då data uppdateras.\n\n### Användningsvillkor\nAnvändandet kan komma att tillfälligt blockeras eller stängas av vid missbruk eller vid brott mot tjänstens villkor.\n\n### Kända begränsningar\nData uppdateras nattligen och kan vara tillfälligt otillgänglig under uppdateringsfönstret.\nVid hög belastning kan anrop begränsas tillfälligt (HTTP 429).\n\n### Autentisering\nSamtliga verksamhetsendpoints kräver API-nyckel i HTTP-headern `X-API-Key`.\n\n### Versionering\nAPI:et är versionshanterat via URL (exempelvis `/v1/...`).\nNuvarande version är v1 och gäller tills vidare.\n\n### Datum och tid\nDatum- och tidsvärden representeras enligt RFC3339 (ISO 8601-profil).\nTidpunkter returneras i UTC.\n### Större datamängder och traversering\nKollektioner hämtas stegvis med parametrarna `limit` och `cursorId` för att möjliggöra paginering.\nVid hämtning av en kollektion, börja med ett anrop utan `cursorId`.\nUtelämnat `cursorId` betyder att hämtningen startar från början.\nMer data finns för efterfrågat urval så länge `hasMore` i svaret är true.\nAnvänd samma `limit` genom hela flödet för en stabil traversering (max är 5000).\n\nExempel på traversering:\n1. `GET /v1/arbetsstallen?limit=5000`\n2. Läs `pagination.nextCursorId` i svaret, och skicka med som `cursorId` i efterföljande anrop.\n3. `GET /v1/arbetsstallen?limit=5000&cursorId=12345`\n4. Upprepa steg 2-3 tills `pagination.hasMore` är false.\n\n### Felhantering\nFel svaras med `application/problem+json` enligt ProblemDetails. Vanliga statuskoder är 400, 401, 404, 429, 500 och 503.\n\nDetaljerad beskrivning av resurser, fält och exempel finns per controller och endpoint.",
+  "version": "v1"
+ },
+ "paths": {
+  "/v{v}/arbetsstallen": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställen med urval av variabler",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/full": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetställen med alla tillgängliga variabler",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aeFullDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/count": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Antal tillgängliga arbetsställen",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/{cfarNr}": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställe med urval av variabler​",
+    "parameters": [
+     {
+      "name": "cfarNr",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/{cfarNr}/full": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställe med alla tillgängliga variabler",
+    "parameters": [
+     {
+      "name": "cfarNr",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aeFullData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/naringsgren/{naringsgrenKod}": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställen filtrerade på näringsgren (rangordning=1)",
+    "parameters": [
+     {
+      "name": "naringsgrenKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/naringsgren/{naringsgrenKod}/count": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Antal arbetsställen filtrerade på näringsgren (rangordning=1)",
+    "parameters": [
+     {
+      "name": "naringsgrenKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/kommun/{kommunKod}": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställen filtrerade på kommun",
+    "parameters": [
+     {
+      "name": "kommunKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/kommun/{kommunKod}/count": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Antal arbetsställen filtrerade på kommun",
+    "parameters": [
+     {
+      "name": "kommunKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/lan/{lanKod}": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställen filtrerade på län",
+    "parameters": [
+     {
+      "name": "lanKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/lan/{lanKod}/count": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Antal arbetsställen filtrerade på län",
+    "parameters": [
+     {
+      "name": "lanKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/anstalldaklass/{anstKlKod}": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Arbetsställen filtrerade på anställdaklass",
+    "parameters": [
+     {
+      "name": "anstKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/aePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/arbetsstallen/anstalldaklass/{anstKlKod}/count": {
+   "get": {
+    "tags": [
+     "AE"
+    ],
+    "summary": "Antal arbetsställen filtrerade på anställdaklass",
+    "parameters": [
+     {
+      "name": "anstKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/openapi.json": {
+   "get": {
+    "tags": [
+     "AFR.API"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     },
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/api-info": {
+   "get": {
+    "tags": [
+     "Info"
+    ],
+    "summary": "Information om AFR API",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/apiInfoData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter med urval av variabler",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/full": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter med alla tillgängliga variabler",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jeFullDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal tillgängliga juridiska enheter",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/{peOrgNr}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridisk enhet med urval av variabler",
+    "parameters": [
+     {
+      "name": "peOrgNr",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/{peOrgNr}/full": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridisk enhet med alla tillgängliga variabler",
+    "parameters": [
+     {
+      "name": "peOrgNr",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jeFullData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/naringsgren/{naringsgrenKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på näringsgren (rangordning=1)",
+    "parameters": [
+     {
+      "name": "naringsgrenKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/naringsgren/{naringsgrenKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på näringsgren (rangordning=1)",
+    "parameters": [
+     {
+      "name": "naringsgrenKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/kommun/{kommunKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på kommun",
+    "parameters": [
+     {
+      "name": "kommunKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/kommun/{kommunKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på kommun",
+    "parameters": [
+     {
+      "name": "kommunKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/lan/{lanKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på län",
+    "parameters": [
+     {
+      "name": "lanKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/lan/{lanKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på län",
+    "parameters": [
+     {
+      "name": "lanKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/anstalldaklass/{anstKlKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på anställdaklass",
+    "parameters": [
+     {
+      "name": "anstKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/anstalldaklass/{anstKlKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på anställdaklass",
+    "parameters": [
+     {
+      "name": "anstKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/omsattningsklass/{omsKlKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på omsättningsklass",
+    "parameters": [
+     {
+      "name": "omsKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/omsattningsklass/{omsKlKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på omsättningsklass",
+    "parameters": [
+     {
+      "name": "omsKlKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/juridiskform/{jurFormKod}": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Juridiska enheter filtrerade på juridisk form",
+    "parameters": [
+     {
+      "name": "jurFormKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "cursorId",
+      "in": "query",
+      "description": "",
+      "schema": {
+       "type": "integer",
+       "format": "int32"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/jePartialDataCollectionResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/juridiskaenheter/juridiskform/{jurFormKod}/count": {
+   "get": {
+    "tags": [
+     "JE"
+    ],
+    "summary": "Antal juridiska enheter filtrerade på juridisk form",
+    "parameters": [
+     {
+      "name": "jurFormKod",
+      "in": "path",
+      "description": "",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/countResponseData"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/naringsgrenkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Näringsgren",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/naringsgrenKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/telefonsparrtypkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Telefonspärrtyp",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/telefonsparrtypKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/kommunkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Kommun",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/kommunKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/lankoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Län",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/lanKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/ftgstatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Företagsstatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ftgStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/anstklkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Anstalldaklass",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/anstKlKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/arbgivstatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Arbetsgivarstatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/arbGivStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/aetypkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Arbetsställetyp",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/aETypKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/jurformkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Juridiskform",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/jurformKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/omsklkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Omsättningsklass",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/omsKlKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/agarkontrollkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Ägarkontroll",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/agKontrKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/momsstatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Momsstatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/momsStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/fskattstatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för FSkattstatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/fSkattStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/bolstatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Bolagsstatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/bolStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/privpublkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för PrivatPublikt",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/privPublKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/epostsparrtypkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Epostspärrtyp",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/epostSparrTypKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/sektorkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Sektor",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/sektorKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/reklamsparrtypkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Reklamspärrtyp",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/reklamSparrtypKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/aestatkoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Arbetsställestatus",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/aEStatKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v{v}/kodtabeller/hjverksjekoder": {
+   "get": {
+    "tags": [
+     "Kodtabeller"
+    ],
+    "summary": "Tillgängliga koder för Hjälparbetsställe",
+    "parameters": [
+     {
+      "name": "v",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "400": {
+      "description": "Bad Request",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "429": {
+      "description": "Too Many Requests",
+      "headers": {
+       "Retry-After": {
+        "description": "Antal sekunder klienten bör vänta innan nästa försök.",
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "Internal Server Error",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "Service Unavailable",
+      "content": {
+       "application/problem+json": {
+        "schema": {
+         "$ref": "#/components/schemas/problemDetails"
+        }
+       }
+      }
+     },
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/hjVerksJEKodData"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "aEStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "aETypKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "aeFullData": {
+    "type": "object",
+    "properties": {
+     "cfarNr": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "peOrgNr": {
+      "type": "string"
+     },
+     "ben": {
+      "type": "string"
+     },
+     "postAdress": {
+      "$ref": "#/components/schemas/postAdressData"
+     },
+     "belagenhetsadress": {
+      "$ref": "#/components/schemas/belagenhetsadressData"
+     },
+     "aeStat": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "anstKl": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "hjVerksJE": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "reklamSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "telefonSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "epostSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "startDat": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "slutDat": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "tel": {
+      "type": "string"
+     },
+     "epost": {
+      "type": "string"
+     },
+     "aeTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "geografiskInformation": {
+      "$ref": "#/components/schemas/geografiskInformationData"
+     },
+     "naringsgrenar": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/naringsgrenData"
+      }
+     }
+    },
+    "additionalProperties": false
+   },
+   "aeFullDataCollectionResponseData": {
+    "type": "object",
+    "properties": {
+     "pagination": {
+      "$ref": "#/components/schemas/cursorPaginationResponseData"
+     },
+     "arbetsstallen": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/aeFullData"
+      }
+     }
+    },
+    "additionalProperties": false
+   },
+   "aePartialData": {
+    "type": "object",
+    "properties": {
+     "cfarNr": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "peOrgNr": {
+      "type": "string"
+     },
+     "ben": {
+      "type": "string"
+     },
+     "primarNaringsgren": {
+      "$ref": "#/components/schemas/naringsgrenData"
+     },
+     "postAdress": {
+      "$ref": "#/components/schemas/postAdressData"
+     },
+     "belagenhetsadress": {
+      "$ref": "#/components/schemas/belagenhetsadressData"
+     },
+     "aeStat": {
+      "type": "string"
+     },
+     "anstKl": {
+      "type": "string"
+     },
+     "reklamSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "telefonSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "epostSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     }
+    },
+    "additionalProperties": false
+   },
+   "aePartialDataCollectionResponseData": {
+    "type": "object",
+    "properties": {
+     "pagination": {
+      "$ref": "#/components/schemas/cursorPaginationResponseData"
+     },
+     "arbetsstallen": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/aePartialData"
+      }
+     }
+    },
+    "additionalProperties": false
+   },
+   "agKontrKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "anstKlKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "apiInfoData": {
+    "type": "object",
+    "properties": {
+     "apiNamn": {
+      "type": "string"
+     },
+     "senasteUppdateringsDatum": {
+      "type": "string",
+      "format": "date-time"
+     }
+    },
+    "additionalProperties": false
+   },
+   "arbGivStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "belagenhetsadressData": {
+    "type": "object",
+    "properties": {
+     "lan": {
+      "type": "string"
+     },
+     "kommun": {
+      "type": "string"
+     },
+     "bGatuAdress": {
+      "type": "string"
+     },
+     "bPostNr": {
+      "type": "string"
+     },
+     "bPostOrt": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "bolStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "countResponseData": {
+    "type": "object",
+    "properties": {
+     "count": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "path": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "cursorPaginationResponseData": {
+    "type": "object",
+    "properties": {
+     "nextCursorId": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "limit": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "hasMore": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false
+   },
+   "epostSparrTypKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "fSkattStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "ftgStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "geografiskInformationData": {
+    "type": "object",
+    "properties": {
+     "nordKoordinatSW": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "ostKoordinatSW": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "nordKoordinatAdressSW": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "ostKoordinatAdressSW": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "tatSmaTypKod": {
+      "type": "string"
+     },
+     "tatSmaTypText": {
+      "type": "string"
+     },
+     "tatOrtSmaOrtKod": {
+      "type": "string"
+     },
+     "tatOrtSmaOrtBen": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "hjVerksJEKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "jeFullData": {
+    "type": "object",
+    "properties": {
+     "peOrgNr": {
+      "type": "string"
+     },
+     "orgNr": {
+      "type": "string"
+     },
+     "namn": {
+      "type": "string"
+     },
+     "postAdress": {
+      "$ref": "#/components/schemas/postAdressData"
+     },
+     "kommunSate": {
+      "type": "string"
+     },
+     "lanSate": {
+      "type": "string"
+     },
+     "aeAnt": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "anstKl": {
+      "type": "string"
+     },
+     "ftgStat": {
+      "type": "string"
+     },
+     "jurform": {
+      "type": "string"
+     },
+     "reklamSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "telefonSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "epostSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "startDat": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "slutDat": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "regDat": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "expImp": {
+      "type": "string"
+     },
+     "tel": {
+      "type": "string"
+     },
+     "epost": {
+      "type": "string"
+     },
+     "omsAr": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "omsKl": {
+      "type": "string"
+     },
+     "agKat": {
+      "type": "string"
+     },
+     "foretagsnamn": {
+      "type": "string"
+     },
+     "foretagsnamnAnt": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "arbGivStat": {
+      "type": "string"
+     },
+     "momsStat": {
+      "type": "string"
+     },
+     "fSkattStat": {
+      "type": "string"
+     },
+     "bolStat": {
+      "type": "string"
+     },
+     "privPubl": {
+      "type": "string"
+     },
+     "sektor": {
+      "type": "string"
+     },
+     "naringsgrenar": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/naringsgrenData"
+      }
+     }
+    },
+    "additionalProperties": false
+   },
+   "jeFullDataCollectionResponseData": {
+    "type": "object",
+    "properties": {
+     "jes": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/jeFullData"
+      }
+     },
+     "pagination": {
+      "$ref": "#/components/schemas/cursorPaginationResponseData"
+     }
+    },
+    "additionalProperties": false
+   },
+   "jePartialData": {
+    "type": "object",
+    "properties": {
+     "peOrgNr": {
+      "type": "string"
+     },
+     "orgNr": {
+      "type": "string"
+     },
+     "namn": {
+      "type": "string"
+     },
+     "postAdress": {
+      "$ref": "#/components/schemas/postAdressData"
+     },
+     "primarNaringsgren": {
+      "$ref": "#/components/schemas/naringsgrenData"
+     },
+     "kommunSate": {
+      "type": "string"
+     },
+     "lanSate": {
+      "type": "string"
+     },
+     "anstKl": {
+      "type": "string"
+     },
+     "ftgStat": {
+      "type": "string"
+     },
+     "jurform": {
+      "type": "string"
+     },
+     "reklamSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "telefonSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "epostSparrTyp": {
+      "type": "integer",
+      "format": "int32"
+     }
+    },
+    "additionalProperties": false
+   },
+   "jePartialDataCollectionResponseData": {
+    "type": "object",
+    "properties": {
+     "jes": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/jePartialData"
+      }
+     },
+     "pagination": {
+      "$ref": "#/components/schemas/cursorPaginationResponseData"
+     }
+    },
+    "additionalProperties": false
+   },
+   "jurformKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "kommunKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "lanKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "momsStatKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "naringsgrenData": {
+    "type": "object",
+    "properties": {
+     "rangordning": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "naringsgren": {
+      "type": "string"
+     },
+     "andelProcent": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "avdelningsKod": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "naringsgrenKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     },
+     "avdelningKod": {
+      "type": "string"
+     },
+     "avdelningText": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "omsKlKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "postAdressData": {
+    "type": "object",
+    "properties": {
+     "gatuAdress": {
+      "type": "string"
+     },
+     "coAdress": {
+      "type": "string"
+     },
+     "postNr": {
+      "type": "string"
+     },
+     "postOrt": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "privPublKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "problemDetails": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "nullable": true
+     },
+     "title": {
+      "type": "string",
+      "nullable": true
+     },
+     "status": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true
+     },
+     "detail": {
+      "type": "string",
+      "nullable": true
+     },
+     "instance": {
+      "type": "string",
+      "nullable": true
+     }
+    },
+    "additionalProperties": {}
+   },
+   "reklamSparrtypKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "sektorKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "string"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "telefonsparrtypKodData": {
+    "type": "object",
+    "properties": {
+     "kod": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "klartext": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  "securitySchemes": {
+   "ApiKey": {
+    "type": "apiKey",
+    "description": "API Key via X-API-Key header",
+    "name": "X-API-Key",
+    "in": "header"
+   }
+  }
+ },
+ "security": [
+  {
+   "ApiKey": []
+  }
+ ],
+ "tags": [
+  {
+   "name": "AE"
+  },
+  {
+   "name": "AFR.API"
+  },
+  {
+   "name": "Info"
+  },
+  {
+   "name": "JE"
+  },
+  {
+   "name": "Kodtabeller"
+  }
+ ]
+}

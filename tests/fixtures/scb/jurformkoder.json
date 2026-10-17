@@ -1,0 +1,142 @@
+[
+ {
+  "kod": "10",
+  "klartext": "Fysiska personer"
+ },
+ {
+  "kod": "21",
+  "klartext": "Enkla bolag"
+ },
+ {
+  "kod": "22",
+  "klartext": "Partrederier"
+ },
+ {
+  "kod": "23",
+  "klartext": "Värdepappersfonder"
+ },
+ {
+  "kod": "31",
+  "klartext": "Handelsbolag, kommanditbolag"
+ },
+ {
+  "kod": "32",
+  "klartext": "Gruvbolag"
+ },
+ {
+  "kod": "41",
+  "klartext": "Bankaktiebolag"
+ },
+ {
+  "kod": "42",
+  "klartext": "Försäkringsaktiebolag"
+ },
+ {
+  "kod": "43",
+  "klartext": "Europabolag"
+ },
+ {
+  "kod": "49",
+  "klartext": "Övriga aktiebolag"
+ },
+ {
+  "kod": "51",
+  "klartext": "Ekonomiska föreningar"
+ },
+ {
+  "kod": "53",
+  "klartext": "Bostadsrättsföreningar"
+ },
+ {
+  "kod": "54",
+  "klartext": "Kooperativ hyresrättsförening"
+ },
+ {
+  "kod": "55",
+  "klartext": "Europakooperativ, grupperingar"
+ },
+ {
+  "kod": "61",
+  "klartext": "Ideella föreningar"
+ },
+ {
+  "kod": "62",
+  "klartext": "Samfälligheter"
+ },
+ {
+  "kod": "63",
+  "klartext": "Registrerade trossamfund"
+ },
+ {
+  "kod": "71",
+  "klartext": "Familjestiftelser"
+ },
+ {
+  "kod": "72",
+  "klartext": "Övriga stiftelser och fonder"
+ },
+ {
+  "kod": "81",
+  "klartext": "Statliga enheter"
+ },
+ {
+  "kod": "82",
+  "klartext": "Kommuner"
+ },
+ {
+  "kod": "83",
+  "klartext": "Kommunalförbund"
+ },
+ {
+  "kod": "84",
+  "klartext": "Regioner"
+ },
+ {
+  "kod": "85",
+  "klartext": "Allmänna försäkringskassor"
+ },
+ {
+  "kod": "87",
+  "klartext": "Off. korporationer o anstalter"
+ },
+ {
+  "kod": "88",
+  "klartext": "Hypoteksföreningar"
+ },
+ {
+  "kod": "89",
+  "klartext": "Regionala statliga myndigheter"
+ },
+ {
+  "kod": "91",
+  "klartext": "Oskiftade dödsbon"
+ },
+ {
+  "kod": "92",
+  "klartext": "Ömsesidiga försäkringsbolag"
+ },
+ {
+  "kod": "93",
+  "klartext": "Sparbanker"
+ },
+ {
+  "kod": "94",
+  "klartext": "Understöds-, Försäkringsfören."
+ },
+ {
+  "kod": "95",
+  "klartext": "Arbetslöshetskassor"
+ },
+ {
+  "kod": "96",
+  "klartext": "Utländska juridiska personer"
+ },
+ {
+  "kod": "98",
+  "klartext": "Övr sv jur pers, enl särsk lag"
+ },
+ {
+  "kod": "99",
+  "klartext": "Juridisk form ej utredd"
+ }
+]

@@ -131,7 +131,27 @@ about a dozen calls for a large industry instead of one `/full` call per company
     `verksamhetsbeskrivning`, `organisationsdatum`.
   - `POST /dokumentlista` with the same body returns 200 with `dokument[]`;
     `GET /dokument/{dokumentId}` downloads one document (annual report zip).
-  - Errors use the `ApiError` schema.
+  - Errors use the `ApiError` schema (`type`, `instance`, `status`, `title`).
+- Verified on real filings 2026-10-17 (nothing stored in the repo):
+  - Many active aktiebolag have no digital annual report (four of the first five tried):
+    "Saknas digitalt" is common, not an edge case.
+  - `dokumentlista` is not sorted; sort on `rapporteringsperiodTom`. Document ids end in
+    `_paket`; the download is a zip.
+  - The zip holds two xhtml files: the annual report (K2 taxonomy `se-k2-risbs`,
+    `se-gen-base` elements, ~100 `ix:nonFraction`) and the audit report (`se-ar-base`, no
+    numeric facts). Pick the one with numeric facts.
+  - Elements: `se-gen-base:Nettoomsattning`, `Rorelseresultat`,
+    `ResultatEfterFinansiellaPoster`, `AretsResultat`, `EgetKapital`, `Tillgangar`,
+    `Soliditet` (scale -2, `ixt:numcomma`), `MedelantaletAnstallda`, personnel and other
+    costs. A K2 report need not tag depreciation separately, so EBITDA is not always
+    available; EBIT is.
+  - Contexts: durations `period0` (current), `period1`... and instants `balans0`...; ids can
+    be upper case (`PERIOD0`), so match on the dates. The multi-year overview repeats the
+    same element and context; values are identical.
+  - Numbers: `format="ixt:numspacecomma"` ("12 345"), `scale` 0, `sign="-"` for negative
+    values (the minus is printed outside the tag).
+- Fixtures: `tests/fixtures/bolagsverket/openapi.json` (spec) and a synthetic annual report
+  package with the same structure and made-up values.
 
 ### Access (credentials received 2026-10-17)
 
@@ -148,6 +168,10 @@ Confirmed by Bolagsverket when the credentials were issued:
   `BOLAGSVERKET_CLIENT_SECRET`), never into the repo, logs or chat.
 - An inactive account is closed after 6 months. Make at least one call before 2027-04-17,
   then keep it in use.
+- Rate limit is not documented in the spec. Observed 2026-10-17: about 40 annual report
+  lookups from four threads at full speed (roughly 5 to 6 calls per second) got HTTP 429
+  with an empty problem body. Paced at 4 calls per second across threads, 61 lookups ran
+  without a 429 in 39 s. A `Retry-After` header is honoured if sent (capped at 10 s).
 - Report lost or leaked credentials to Bolagsverket at once (contact form below).
 - Service status: https://bolagsverket.se/driftsinformation.232.html
 - News and releases (RSS): https://bolagsverket.se/apierochoppnadata/nyheterochreleaserforvaraapier/prenumererapanyheterochreleaserviarssflode.5499.html

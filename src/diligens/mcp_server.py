@@ -7,6 +7,7 @@ MCP Python SDK 2.x: the server class is MCPServer (FastMCP was renamed in v2).
 """
 
 import threading
+from contextlib import ExitStack
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -19,9 +20,13 @@ from pydantic import Field
 from diligens.agent._llm import LlmError
 from diligens.config import get_settings
 from diligens.export.excel import CATEGORY_LABELS, STATUS_ORDER, export_dd_pack, flag_statuses
+from diligens.export.longlist import export_long_list
 from diligens.formatting import format_tsek
-from diligens.models import AnalysisResult
+from diligens.models import AnalysisResult, ScreeningCriteria
 from diligens.pipeline import run_analysis
+from diligens.screening import TOP_DEFAULT, run_screening, with_ranks
+from diligens.sources.bolagsverket import BolagsverketError, make_bolagsverket_client
+from diligens.sources.scb import ScbError, make_scb_client
 
 mcp = MCPServer(
     "diligens",
@@ -340,6 +345,135 @@ def exportera_excel(
         raise ToolError(f"Kunde inte skriva till {folder} ({exc.strerror}).") from exc
     lines = [note] if note else []
     lines += [f"Excel: {workbook}", f"Memo: {memo}", "", result.memo]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def screena_bolag(
+    sni: Annotated[
+        list[str], Field(min_length=1, description="SNI 2025-koder, fem siffror, t.ex. 62100.")
+    ],
+    oms_kl: Annotated[
+        list[int], Field(description="Omsättningsklasser enligt SCB, t.ex. 6 = 20-49 MSEK.")
+    ] = [],  # noqa: B006
+    anst_kl: Annotated[
+        list[int], Field(description="Anställdaklasser enligt SCB, t.ex. 5 = 20-49 anställda.")
+    ] = [],  # noqa: B006
+    lan: Annotated[list[str], Field(description="Länskoder för säte, t.ex. 01 Stockholm.")] = [],  # noqa: B006
+    topp: Annotated[
+        int, Field(ge=0, le=100, description="Hämta årsredovisning för så många bästa.")
+    ] = TOP_DEFAULT,
+    max_rader: Annotated[int, Field(ge=1, le=100, description="Rader i svaret.")] = 15,
+    mapp: Annotated[
+        str | None, Field(description="Skriv även long list till denna mapp (Excel).")
+    ] = None,
+) -> str:
+    """Screena förvärvskandidater (Buy & Build): verksamma aktiebolag med vald primär SNI hos
+    SCB, filtrerade på omsättningsklass, anställdaklass och län, med passningspoäng 0-100
+    (profil 0-60, nyckeltal ur senaste digitala årsredovisning 0-40) och skäl."""
+    criteria = ScreeningCriteria(
+        sni=[s.strip() for s in sni],
+        turnover_classes=[str(c) for c in oms_kl],
+        employee_classes=[str(c) for c in anst_kl],
+        counties=[c.strip().zfill(2) for c in lan],
+    )
+    settings = get_settings()
+    try:
+        with ExitStack() as clients:
+            scb = clients.enter_context(make_scb_client(settings))
+            registry = (
+                clients.enter_context(make_bolagsverket_client(settings)) if topp > 0 else None
+            )
+            result = run_screening(criteria, scb, registry, top=topp)
+        path = export_long_list(result, _output_folder(mapp)) if mapp else None
+    except (ScbError, BolagsverketError) as exc:
+        raise ToolError(str(exc)) from exc
+    except PermissionError as exc:
+        raise ToolError(
+            "Kunde inte skriva long list. Stäng filen i Excel och försök igen."
+        ) from exc
+    missing = sum(
+        1 for c in result.candidates if c.financial and c.financial.status == "Saknas digitalt"
+    )
+    lines = [
+        f"{len(result.candidates)} kandidater av {result.units_scanned} bolag med vald SNI. "
+        f"Årsredovisning sökt för {result.reports_fetched}, saknas digitalt för {missing}.",
+        *result.notes,
+        "",
+        "| Rang | Poäng | Bolag | Org.nr | Ort | Bokslut | Omsättning TSEK | Tillväxt | "
+        "Rörelsemarginal | Skäl |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for rank, c in with_ranks(result.candidates)[:max_rader]:
+        f = c.financial
+        revenue = _tsek(f.revenue.value).replace(" TSEK", "") if f and f.revenue else "-"
+        growth = _percent(f.growth.value) if f and f.growth else "-"
+        margin = _percent(f.ebit_margin.value) if f and f.ebit_margin else "-"
+        reasons = "; ".join(c.profile_reasons[1:] + (f.reasons if f else []))
+        lines.append(
+            f"| {rank or '-'} | {c.total} | {_cell(c.unit.name)} | {c.org_nr} | "
+            f"{c.unit.post_town.title()} | {f.status if f else 'Ej hämtad'} | {revenue} | "
+            f"{growth} | {margin} | {_cell(reasons)} |"
+        )
+    if path:
+        lines += ["", f"Long list: {path}"]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def hamta_bokslut(
+    org_nr: Annotated[str, Field(description="Organisationsnummer, t.ex. 556123-4567.")],
+) -> str:
+    """Nyckeltal ur bolagets senaste digitala årsredovisning hos Bolagsverket (iXBRL):
+    nettoomsättning, rörelseresultat, årets resultat, eget kapital, soliditet och anställda,
+    för året och föregående år, med källa per siffra. Saknas den digitalt sägs det."""
+    try:
+        with make_bolagsverket_client(get_settings()) as registry:
+            report = registry.latest_report(_clean(org_nr))
+    except BolagsverketError as exc:
+        raise ToolError(str(exc)) from exc
+    if report is None:
+        return (
+            f"Saknas digitalt: {org_nr} har ingen digital årsredovisning hos Bolagsverket "
+            "(troligen inlämnad på papper). Inga siffror gissas."
+        )
+    rows = [
+        ("Nettoomsättning", "nettoomsattning", "tsek"),
+        ("Rörelseresultat", "rorelseresultat", "tsek"),
+        ("Resultat efter finansiella poster", "resultat_efter_finansiella", "tsek"),
+        ("Årets resultat", "arets_resultat", "tsek"),
+        ("Eget kapital", "eget_kapital", "tsek"),
+        ("Summa tillgångar", "tillgangar", "tsek"),
+        ("Soliditet", "soliditet", "percent"),
+        ("Medelantal anställda", "medelantal_anstallda", "count"),
+    ]
+    figures = report.figures
+
+    def show(key: str, kind: str) -> str:
+        figure = figures.get(key)
+        if figure is None or figure.value is None:
+            return "-"
+        if kind == "tsek":
+            return _tsek(figure.value).replace(" TSEK", "")
+        if kind == "percent":
+            return _percent(figure.value)
+        return f"{figure.value.normalize():f}"
+
+    name = report.company_name or org_nr
+    lines = [
+        f"{name}, årsredovisning {report.period_start} till {report.period_end} "
+        f"(dokument {report.document_id}). Belopp i TSEK.",
+        *report.notes,
+        "",
+        f"| Post | {report.period_end.year} | Föregående år | Källa |",
+        "|---|---|---|---|",
+    ]
+    for label, key, kind in rows:
+        refs = [figures[k].source_ref for k in (key, key + "_fg") if k in figures]
+        source = "; ".join(refs)
+        lines.append(
+            f"| {label} | {show(key, kind)} | {show(key + '_fg', kind)} | {_cell(source)} |"
+        )
     return "\n".join(lines)
 
 

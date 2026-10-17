@@ -83,24 +83,26 @@ Branch `m5-mcp`. Module: `mcp_server.py`.
 Branch `m6-screening`. Modules: `sources/scb.py`, `sources/bolagsverket.py`,
 `sources/ixbrl.py`.
 
-- [ ] SCB spec saved to `tests/fixtures/scb/openapi.json`; a test asserts every path and
+- [x] SCB spec saved to `tests/fixtures/scb/openapi.json`; a test asserts every path and
       response model the client uses exists in the spec
-- [ ] SCB code tables (`naringsgrenkoder`, `omsklkoder`, `anstklkoder`, `lankoder`,
+- [x] SCB code tables (`naringsgrenkoder`, `omsklkoder`, `anstklkoder`, `lankoder`,
       `jurformkoder`, `ftgstatkoder`) recorded as fixtures; open questions in
       DATA_SOURCES.md answered
-- [ ] SCB client per DATA_SOURCES.md: `X-API-Key` header, cursor pagination until
+- [x] SCB client per DATA_SOURCES.md: `X-API-Key` header, cursor pagination until
       `hasMore` is false, max 5 calls/s with backoff on 429, ProblemDetails mapped to
       readable Swedish errors, nightly 04:00 window handled
-- [ ] Screening: SNI endpoint for candidates, `/full` for details, filters in code on
-      turnover class, employee class, county, active status and legal form
-- [ ] Bolagsverket client: OAuth2 client credentials; organisation lookup, document list,
-      document download (zip with iXBRL); test environment first
-- [ ] iXBRL parser: `ix:nonFraction` with `name`, `contextRef`, `scale`, `sign`; maps to
+- [x] Screening: SNI endpoint for candidates, turnover class lists intersected for the
+      turnover class (no `/full` call per company), filters in code on turnover class,
+      employee class, county, active status and legal form
+- [x] Bolagsverket client: OAuth2 client credentials; organisation lookup, document list,
+      document download (zip with iXBRL); production only, since the API has no test
+      environment
+- [x] iXBRL parser: `ix:nonFraction` with `name`, `contextRef`, `scale`, `sign`; maps to
       the KPIs in DOMAIN.md section 4
-- [ ] Recorded fixtures for all HTTP calls; live tests marked `live`
-- [ ] `uv run diligens screen --sni <kod> --oms-kl <kod> --anst-kl <kod> --lan <kod>`
+- [x] Recorded fixtures for all HTTP calls; live tests marked `live`
+- [x] `uv run diligens screen --sni <kod> --oms-kl <kod> --anst-kl <kod> --lan <kod>`
       writes a long list to Excel with source per figure and a fit score with reasons
-- [ ] Missing annual reports (paper filed) shown as "Saknas digitalt", never guessed
+- [x] Missing annual reports (paper filed) shown as "Saknas digitalt", never guessed
 
 ## M7 Demo polish
 

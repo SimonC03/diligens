@@ -6,9 +6,9 @@ says otherwise.
 
 import datetime as dt
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 # ---------------------------------------------------------------- ledger (sie/)
 
@@ -359,3 +359,133 @@ class AnalysisResult(BaseModel):
     def flags(self) -> list[Flag]:
         """Flags with EBITDA adjustments filled in."""
         return self.bridge.flags
+
+
+# ---------------------------------------------------------------- screening (sources/)
+
+
+class ScbUnit(BaseModel):
+    """A legal unit from SCB's business register, partial data. Codes as SCB sends them."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    pe_org_nr: str = Field(alias="peOrgNr", description="12 digits, SCB's key")
+    org_nr: str = Field(alias="orgNr", description="10 digits, as Bolagsverket uses it")
+    name: str = Field(alias="namn")
+    county: str = Field(alias="lanSate", description="lankoder")
+    municipality: str = Field(default="", alias="kommunSate")
+    employee_class: str = Field(alias="anstKl", description="anstklkoder")
+    status: str = Field(alias="ftgStat", description="ftgstatkoder, 1 = verksam")
+    legal_form: str = Field(alias="jurform", description="jurformkoder, 49 = aktiebolag")
+    primary_sni: str | None = Field(default=None, description="SNI 2025, rank 1")
+    post_town: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        primary = data.get("primarNaringsgren")
+        if primary is None:
+            ranked = sorted(data.get("naringsgrenar") or [], key=lambda n: n["rangordning"])
+            primary = ranked[0] if ranked else None
+        if primary and "primary_sni" not in data:
+            data["primary_sni"] = primary.get("naringsgren")
+        address = data.get("postAdress") or {}
+        data.setdefault("post_town", address.get("postOrt", ""))
+        return data
+
+
+class ScbUnitFull(ScbUnit):
+    turnover_class: str = Field(alias="omsKl", description="omsklkoder")
+    turnover_year: int = Field(alias="omsAr", description="year of the turnover figure, 0 if none")
+    sni_codes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _codes(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "sni_codes" not in data:
+            data = dict(data)
+            ranked = sorted(data.get("naringsgrenar") or [], key=lambda n: n["rangordning"])
+            data["sni_codes"] = [n["naringsgren"] for n in ranked]
+        return data
+
+
+class DocumentInfo(BaseModel):
+    """One filed document in Bolagsverket's list for an organisation."""
+
+    document_id: str
+    period_end: dt.date | None = Field(default=None, description="rapporteringsperiodTom")
+    registered: dt.date | None = Field(default=None, description="registreringstidpunkt")
+
+
+class AnnualReport(BaseModel):
+    """Key figures from a digitally filed annual report (iXBRL), as reported (SEK).
+
+    Figure keys: nettoomsattning, rorelseresultat, avskrivningar, resultat_efter_finansiella,
+    arets_resultat (current year) and the same with suffix _fg (previous year); balance
+    items eget_kapital, tillgangar (and _fg); soliditet; medelantal_anstallda. Costs keep the
+    report's sign (negative). Each figure's source_ref names element, context and document.
+    """
+
+    document_id: str
+    org_nr: str
+    company_name: str = ""
+    period_start: dt.date
+    period_end: dt.date
+    figures: dict[str, Figure]
+    notes: list[str] = Field(
+        default_factory=list, description="Swedish, e.g. a fiscal year that is not 12 months"
+    )
+
+
+class ScreeningCriteria(BaseModel):
+    """Target profile; SCB codes as strings. Empty lists mean no requirement."""
+
+    sni: list[str] = Field(description="SNI 2025, five digits, primary industry")
+    turnover_classes: list[str] = Field(default_factory=list, description="omsklkoder")
+    employee_classes: list[str] = Field(default_factory=list, description="anstklkoder")
+    counties: list[str] = Field(default_factory=list, description="lankoder of the seat")
+
+
+class FinancialScore(BaseModel):
+    points: int | None = Field(description="0-40, None without a digital annual report")
+    reasons: list[str]
+    status: str = Field(description="Swedish, e.g. 'Årsredovisning 2025' or 'Saknas digitalt'")
+    period_end: dt.date | None = None
+    revenue: Figure | None = None
+    revenue_prior: Figure | None = None
+    ebit: Figure | None = None
+    growth: Figure | None = Field(default=None, description="revenue / prior year - 1")
+    ebit_margin: Figure | None = Field(default=None, description="EBIT / revenue")
+
+
+class Candidate(BaseModel):
+    unit: ScbUnit
+    turnover_class: str = ""
+    profile_points: int
+    profile_reasons: list[str]
+    financial: FinancialScore | None = Field(
+        default=None, description="None when the annual report was not fetched (outside top N)"
+    )
+
+    @property
+    def org_nr(self) -> str:
+        return self.unit.org_nr
+
+    @property
+    def total(self) -> int:
+        return self.profile_points + (self.financial.points or 0 if self.financial else 0)
+
+
+class ScreeningResult(BaseModel):
+    criteria: ScreeningCriteria
+    candidates: list[Candidate] = Field(description="best fit first")
+    units_scanned: int = Field(description="legal units with a target SNI at SCB")
+    reports_fetched: int = Field(description="candidates whose annual report was looked up")
+    labels: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="SCB code tables by name, for display"
+    )
+    notes: list[str] = Field(default_factory=list, description="Swedish warnings for the run")
+    generated: dt.date

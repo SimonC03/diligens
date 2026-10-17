@@ -1,0 +1,14 @@
+[
+ {
+  "kod": "0",
+  "klartext": "Har aldrig varit verksam"
+ },
+ {
+  "kod": "1",
+  "klartext": "Är verksam"
+ },
+ {
+  "kod": "9",
+  "klartext": "Är ej längre verksam"
+ }
+]
