@@ -311,10 +311,20 @@ def test_local_only_and_same_site(client: TestClient) -> None:
     ):
         refused = client.post("/analyser", data={"demo": "1"}, headers={"origin": origin})
         assert refused.status_code == 403, origin
-    no_origin = client.post(
-        "/analyser", data={"demo": "1"}, headers={"sec-fetch-site": "cross-site"}
+    for site in ("cross-site", "same-site"):  # same-site: another port on this computer
+        marked = client.post("/analyser", data={"demo": "1"}, headers={"sec-fetch-site": site})
+        assert marked.status_code == 403, site
+        assert marked.headers["content-type"].startswith("text/html; charset=utf-8")
+        assert "Förfrågan kom från en annan webbplats" in marked.text
+
+    # A real form post from the app's own page, as a browser sends it: the browser marks it
+    # same-origin even when it reports the Origin as "null".
+    own_form = client.post(
+        "/screening",
+        data={"sni": "6210"},
+        headers={"origin": "null", "sec-fetch-site": "same-origin"},
     )
-    assert no_origin.status_code == 403
+    assert own_form.status_code == 200 and "fem siffror" in own_form.text
     same_site = client.post("/api/test/scb", headers={"origin": "http://testserver"})
     assert same_site.status_code == 200 and same_site.json()["ok"]
     assert client.post("/api/test/bolagsverket").json()["ok"]
@@ -326,7 +336,7 @@ def test_local_only_and_same_site(client: TestClient) -> None:
     assert "frame-ancestors 'none'" in headers["content-security-policy"]
     assert "script-src 'self'" in headers["content-security-policy"]
     assert headers["x-content-type-options"] == "nosniff"
-    assert headers["referrer-policy"] == "no-referrer"
+    assert headers["referrer-policy"] == "same-origin"  # nothing is sent to other sites
     assert "<script>" not in client.get("/").text  # no inline script for the policy to block
 
     # An oversized upload is refused before its body is read.

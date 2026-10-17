@@ -258,3 +258,8 @@ Format: `YYYY-MM-DD` decision, reason.
   (Saknas digitalt, Kunde inte läsas, Kunde inte hämtas) follow unranked by profile, then
   those never searched. This replaces the earlier rule that every searched company is
   ranked.
+- 2026-10-17 Same-origin check uses the browser's Sec-Fetch-Site marker first and the Origin
+  header only as a fallback. With Referrer-Policy no-referrer, browsers send "Origin: null"
+  for the app's own form posts, which the first version refused; the policy is now
+  same-origin, so app addresses still never reach other sites. Refusals are a small UTF-8
+  page.
