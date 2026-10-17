@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Ny analys{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/analyser">Due diligence</a><span>/</span><span>Ny analys</span></nav>
+<header class="page-head">
+  <div>
+    <h1>Ny analys</h1>
+    <p class="lede">Välj en SIE4-export från bokföringssystemet. Analysen tar under en minut med AI-klassning och några sekunder utan.</p>
+  </div>
+</header>
+
+{% if error %}<div class="callout neg" role="alert" style="margin-bottom: 20px">{{ error }}</div>{% endif %}
+
+<div class="grid-3" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)">
+  <form class="panel" method="post" action="/analyser" enctype="multipart/form-data" data-busy="Startar …">
+    <div class="panel-body form">
+      <label class="dropzone">
+        <input type="file" name="fil" accept=".se,.si,.sie,.txt">
+        <span class="dropzone-title">Välj SIE4-fil eller dra hit den</span>
+        <span class="small muted">Typ 4, en eller två räkenskapsår, högst 50 MB</span>
+        <span class="dropzone-file" hidden></span>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" name="med_ai" value="1" {% if status.ai %}checked{% else %}disabled{% endif %}>
+        <span class="switch-track"></span>
+        <span>
+          <span class="field-label">AI-klassning av verifikat</span>
+          <span class="field-help" style="display: block">
+            {% if status.ai %}Föreslår normaliseringar, formulerar DD-frågor och skriver memot med {{ status.model }}. Utvalda verifikat och nyckeltal skickas till AI-leverantören.
+            {% else %}Ingen API-nyckel är konfigurerad. Analysen körs utan AI: alla beräkningar görs, flaggade poster läggs under granskning och frågorna följer mallar.{% endif %}
+          </span>
+        </span>
+      </label>
+
+      <div class="field">
+        <label class="field-label" for="narstaende">Närstående parter <span class="faint">valfritt</span></label>
+        <textarea class="textarea" id="narstaende" name="narstaende" placeholder="Ett namn per rad, till exempel ägarens holdingbolag"></textarea>
+        <span class="field-help">Verifikat som nämner dessa namn lyfts särskilt.</span>
+      </div>
+
+      <div class="form-foot">
+        <span class="small faint">Filen sparas bara i arbetsytan på den här datorn.</span>
+        <button class="btn btn-primary" type="submit">Starta analys</button>
+      </div>
+    </div>
+  </form>
+
+  <aside>
+    {% if demo %}
+    <form class="panel" method="post" action="/analyser" data-busy="Startar …">
+      <div class="panel-head"><h3>Demobolaget</h3></div>
+      <div class="panel-body">
+        <p class="small muted">Ett syntetiskt konsultbolag med två räkenskapsår och sex inplanterade avvikelser. Bra för att prova flödet.</p>
+        <input type="hidden" name="demo" value="1">
+        {% if status.ai %}<input type="hidden" name="med_ai" value="1">{% endif %}
+        <button class="btn" type="submit" style="margin-top: 14px">Analysera demobolaget</button>
+      </div>
+    </form>
+    {% endif %}
+
+    <div class="panel" style="margin-top: 16px">
+      <div class="panel-head"><h3>Vad händer med filen</h3></div>
+      <div class="panel-body prose small">
+        <p>Filen läses och sparas i arbetsytan. Utan AI-klassning lämnar inget datorn.</p>
+        <p>Med AI-klassning skickas de verifikat som förfiltret valt ut, kontoplanen och de beräknade nyckeltalen till memot, med bolagets namn. Hela filen skickas aldrig.</p>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Översikt{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Översikt</h1>
+    <p class="lede">Due diligence på bokföringen och screening av förvärvskandidater på registerdata. Varje siffra räknas i kod från källan och går att spåra tillbaka till den.</p>
+  </div>
+</header>
+
+<div class="grid-2">
+  <section class="panel entry">
+    <span class="badge accent">Due diligence</span>
+    <h2>Från SIE4-export till DD-underlag</h2>
+    <p>Ladda upp bokföringen från Fortnox, Visma eller annat system. Resultatet är ett komplett underlag på under en minut.</p>
+    <ul class="facts">
+      <li>Resultat- och balansräkning per månad med LTM</li>
+      <li>EBITDA-brygga med förslag till normaliseringar</li>
+      <li>Rörelsekapital, nettoskuld och avstämning mot filen</li>
+      <li>Frågor till säljaren och ett kort memo</li>
+    </ul>
+    <div class="form-row">
+      <a class="btn btn-primary" href="/analyser/ny">Ny analys</a>
+      <a class="btn btn-ghost" href="/analyser">Alla analyser <span class="nav-count">{{ counts.analyses }}</span></a>
+    </div>
+  </section>
+
+  <section class="panel entry">
+    <span class="badge accent">Screening</span>
+    <h2>Kandidater för tilläggsförvärv</h2>
+    <p>Sök bolag efter bransch, storlek och län. Kandidaterna rangordnas med nyckeltal ur deras senaste digitala årsredovisning.</p>
+    <ul class="facts">
+      <li>Verksamma aktiebolag ur SCB:s företagsregister</li>
+      <li>Tillväxt och rörelsemarginal från Bolagsverket</li>
+      <li>Poäng 0 till 100 med skäl för varje bolag</li>
+      <li>Long list i Excel med källa för varje siffra</li>
+    </ul>
+    <div class="form-row">
+      <a class="btn btn-primary" href="/screening/ny">Ny screening</a>
+      <a class="btn btn-ghost" href="/screening">Alla screeningar <span class="nav-count">{{ counts.screenings }}</span></a>
+    </div>
+  </section>
+</div>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Så fungerar flödet</h2>
+    <a class="link small" href="/metod">Metod och källor</a>
+  </div>
+  <div class="panel">
+    <div class="flow" style="--steps: 4">
+      <div class="flow-step">
+        <h3>Underlag</h3>
+        <p>En SIE4-fil från bokföringen, eller SCB:s och Bolagsverkets register för screening.</p>
+        <span class="who you">Du väljer</span>
+      </div>
+      <div class="flow-step">
+        <h3>Beräkning</h3>
+        <p>Rapporter, nyckeltal, brygga och avstämning räknas i kod direkt från verifikaten.</p>
+        <span class="who code">Koden räknar</span>
+      </div>
+      <div class="flow-step">
+        <h3>Bedömning</h3>
+        <p>Verifikat klassas som möjliga justeringar och frågor formuleras. Osäkra poster lyfts till granskning.</p>
+        <span class="who ai">AI föreslår</span>
+      </div>
+      <div class="flow-step">
+        <h3>Beslut och leverans</h3>
+        <p>Du avgör vad som ingår i justerad EBITDA. Excel och memo följer ditt val.</p>
+        <span class="who you">Du beslutar</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Senaste arbete</h2>
+  </div>
+  <div class="panel">
+    {% if recent %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Typ</th><th>Namn</th><th>Detalj</th><th class="num">Skapad</th></tr>
+        </thead>
+        <tbody>
+          {% for item in recent %}
+          <tr class="clickable" data-href="{{ item.url }}">
+            <td class="nowrap muted">{{ item.kind }}</td>
+            <td><a href="{{ item.url }}"><strong>{{ item.title }}</strong></a></td>
+            <td class="muted">{{ item.detail }}</td>
+            <td class="num muted">{{ item.created.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      <h2>Inget arbete ännu</h2>
+      <p>Starta med en analys av en SIE4-fil eller en screening.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

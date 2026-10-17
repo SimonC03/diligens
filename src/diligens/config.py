@@ -1,5 +1,6 @@
 """Settings loaded from environment and .env. Secrets are never logged."""
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr, field_validator
@@ -19,6 +20,9 @@ class Settings(BaseSettings):
     bolagsverket_client_id: SecretStr | None = None
     bolagsverket_client_secret: SecretStr | None = None
     bolagsverket_env: Literal["test", "prod"] = "test"
+
+    # Where the app keeps analyses and screenings; on this computer only, never in git.
+    diligens_workspace: Path = Path("data/private/arbetsyta")
 
     @field_validator(
         "anthropic_api_key",

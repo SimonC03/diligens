@@ -77,6 +77,91 @@ def with_ranks(candidates: list[Candidate]) -> list[tuple[int | None, Candidate]
     return out
 
 
+UNANSWERED = "Kunde inte hämtas"
+UNAVAILABLE_NOTE = "Bolagsverket svarade inte; försök igen senare för fler årsredovisningar"
+
+
+def _look_up(
+    candidates: list[Candidate],
+    bolagsverket: BolagsverketClient,
+    today: dt.date,
+    on_report: Callable[[int, int], None] | None,
+) -> tuple[list[Candidate], bool]:
+    """Financial score per candidate, in parallel. Once Bolagsverket is unavailable the
+    remaining lookups are skipped; the flag says whether that happened."""
+    unavailable = threading.Event()
+    done = 0
+    counter = threading.Lock()
+
+    def score(candidate: Candidate) -> Candidate:
+        if unavailable.is_set():
+            financial = FinancialScore(
+                points=None,
+                reasons=["Bolagsverket svarade inte, årsredovisningen söktes inte"],
+                status=UNANSWERED,
+            )
+            return candidate.model_copy(update={"financial": financial})
+        try:
+            financial = financial_score(bolagsverket.latest_report(candidate.org_nr), today)
+        except ReportNotReadable as exc:
+            financial = FinancialScore(points=None, reasons=[str(exc)], status="Kunde inte läsas")
+        except BolagsverketUnavailable as exc:
+            unavailable.set()
+            financial = FinancialScore(points=None, reasons=[str(exc)], status=UNANSWERED)
+        except BolagsverketError as exc:
+            financial = FinancialScore(points=None, reasons=[str(exc)], status=UNANSWERED)
+        except Exception:  # one odd company must never stop the whole screening
+            log.exception("Årsredovisning för %s kunde inte behandlas", candidate.org_nr)
+            financial = FinancialScore(
+                points=None,
+                reasons=["Oväntat fel när årsredovisningen behandlades"],
+                status="Kunde inte läsas",
+            )
+        return candidate.model_copy(update={"financial": financial})
+
+    def counted(candidate: Candidate) -> Candidate:
+        nonlocal done
+        scored = score(candidate)
+        with counter:
+            done += 1
+            if on_report is not None:
+                on_report(done, len(candidates))
+        return scored
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        scored = list(pool.map(counted, candidates))
+    return scored, unavailable.is_set()
+
+
+def _ranked(looked_up: list[Candidate], rest: list[Candidate]) -> list[Candidate]:
+    """Looked-up companies rank by total score; the rest follow by profile, unranked."""
+    return sorted(looked_up, key=lambda c: (-c.total, c.unit.name)) + rest
+
+
+def retry_unavailable(
+    result: ScreeningResult,
+    bolagsverket: BolagsverketClient,
+    today: dt.date | None = None,
+    on_report: Callable[[int, int], None] | None = None,
+) -> ScreeningResult:
+    """Look up again the annual reports Bolagsverket did not answer, then rank again.
+
+    Reports that exist but could not be read are not retried; neither are companies
+    outside the top list.
+    """
+    today = today or dt.date.today()
+    retry = [c for c in result.candidates if c.financial and c.financial.status == UNANSWERED]
+    scored, unavailable = _look_up(retry, bolagsverket, today, on_report)
+    by_org = {c.org_nr: c for c in scored}
+    updated = [by_org.get(c.org_nr, c) for c in result.candidates]
+    looked_up = [c for c in updated if c.financial and c.financial.status != NOT_FETCHED.status]
+    rest = [c for c in updated if not (c.financial and c.financial.status != NOT_FETCHED.status)]
+    notes = [n for n in result.notes if n != UNAVAILABLE_NOTE]
+    if unavailable:
+        notes.append(UNAVAILABLE_NOTE)
+    return result.model_copy(update={"candidates": _ranked(looked_up, rest), "notes": notes})
+
+
 def run_screening(
     criteria: ScreeningCriteria,
     scb: ScbClient,
@@ -119,59 +204,20 @@ def run_screening(
     step()
     candidates = select_candidates(list(units.values()), turnover, criteria)
     shortlist, notes = _shortlist(candidates, top) if bolagsverket is not None else ([], [])
-    unavailable = threading.Event()
-    done = 0
-    counter = threading.Lock()
-
-    def counted(candidate: Candidate) -> Candidate:
-        nonlocal done
-        scored = score(candidate)
-        with counter:
-            done += 1
-            if on_report is not None:
-                on_report(done, len(shortlist))
-        return scored
-
-    def score(candidate: Candidate) -> Candidate:
-        assert bolagsverket is not None
-        if unavailable.is_set():
-            financial = FinancialScore(
-                points=None,
-                reasons=["Bolagsverket svarade inte, årsredovisningen söktes inte"],
-                status="Kunde inte hämtas",
-            )
-            return candidate.model_copy(update={"financial": financial})
-        try:
-            financial = financial_score(bolagsverket.latest_report(candidate.org_nr), today)
-        except ReportNotReadable as exc:
-            financial = FinancialScore(points=None, reasons=[str(exc)], status="Kunde inte läsas")
-        except BolagsverketUnavailable as exc:
-            unavailable.set()
-            financial = FinancialScore(points=None, reasons=[str(exc)], status="Kunde inte hämtas")
-        except BolagsverketError as exc:
-            financial = FinancialScore(points=None, reasons=[str(exc)], status="Kunde inte hämtas")
-        except Exception:  # one odd company must never stop the whole screening
-            log.exception("Årsredovisning för %s kunde inte behandlas", candidate.org_nr)
-            financial = FinancialScore(
-                points=None,
-                reasons=["Oväntat fel när årsredovisningen behandlades"],
-                status="Kunde inte läsas",
-            )
-        return candidate.model_copy(update={"financial": financial})
 
     step()
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        scored = list(pool.map(counted, shortlist))
-    if unavailable.is_set():
-        notes.append("Bolagsverket svarade inte; försök igen senare för fler årsredovisningar")
+    scored: list[Candidate] = []
+    if bolagsverket is not None:
+        scored, unavailable = _look_up(shortlist, bolagsverket, today, on_report)
+        if unavailable:
+            notes.append(UNAVAILABLE_NOTE)
     fetched = {c.org_nr for c in shortlist}
     rest = [
         c.model_copy(update={"financial": NOT_FETCHED})
         for c in candidates
         if c.org_nr not in fetched
     ]
-    # Looked-up companies rank by total score; the rest follow by profile, unranked.
-    ranked = sorted(scored, key=lambda c: (-c.total, c.unit.name)) + rest
+    ranked = _ranked(scored, rest)
 
     return ScreeningResult(
         criteria=criteria,

@@ -1,0 +1,31 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{{ intro("Frågor till säljaren, grupperade per konto och kategori, med verifikat och belopp som referens. Läs igenom dem innan de skickas.") }}
+<div class="panel">
+  <div class="panel-head">
+    <h2>{{ r.questions|length }} frågor</h2>
+    <button class="btn btn-sm" type="button" data-copy="#questions">Kopiera alla</button>
+  </div>
+  {% if r.questions %}
+  <ol class="ordered" id="questions" data-text="{% for q in r.questions %}{{ loop.index }}. {{ q.text }}
+{% endfor %}">
+    {% for q in r.questions %}
+    <li>
+      <span>
+        {{ q.wording or q.text }}
+        <span class="cell-sub" style="display: block">
+          Konto {{ q.accounts|join(', ') }} ·
+          {% for ref in q.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if q.voucher_refs|length > 6 %} m.fl. ({{ q.voucher_refs|length }} st){% endif %}
+          {% if q.amount is not none %} · {{ (-q.amount)|tsek }} TSEK{% endif %}
+        </span>
+      </span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <div class="empty">Inga frågor att ställa.</div>
+  {% endif %}
+  <div class="panel-foot">Belopp: verifikatens EBITDA-konton, intäkt positiv och kostnad negativ.{% if not meta.use_llm %} Utan AI-klassning följer frågorna mallar.{% endif %}</div>
+</div>
+{% endblock %}

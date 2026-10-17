@@ -17,7 +17,7 @@ import diligens.screening as screening
 from diligens.analysis.screening import financial_score, profile_score, select_candidates
 from diligens.cli import app
 from diligens.models import AnnualReport, Figure, ScbUnit, ScreeningCriteria
-from diligens.screening import SCREENING_STAGES, run_screening
+from diligens.screening import SCREENING_STAGES, retry_unavailable, run_screening
 from diligens.sources.bolagsverket import BolagsverketUnavailable, ReportNotReadable
 from diligens.sources.scb import ScbClient, ScbError
 
@@ -295,3 +295,35 @@ def test_run_includes_ties_and_keeps_going_after_errors(monkeypatch: pytest.Monk
     profile_only = run_screening(CRITERIA, fake_scb(units, turnover), None, top=25)
     assert profile_only.reports_fetched == 0 and not profile_only.notes
     assert {c.financial.status for c in profile_only.candidates if c.financial} == {"Ej hämtad"}
+
+
+def test_retry_fetches_only_what_bolagsverket_did_not_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(screening, "WORKERS", 1)
+    numbers = (1, 10, 2, 8)
+    units = [scb_unit(n) for n in numbers]
+    turnover = {"6": [f"1655990{n:05d}" for n in numbers]}
+    first = _Registry(
+        {
+            org(1): None,
+            org(10): ReportNotReadable("Årsredovisningen kunde inte läsas: trasig"),
+            org(2): BolagsverketUnavailable("Bolagsverket begränsar antalet anrop just nu."),
+            org(8): None,
+        }
+    )
+    result = run_screening(CRITERIA, fake_scb(units, turnover), cast(Any, first), top=25)
+    assert any("Bolagsverket svarade inte" in n for n in result.notes)
+
+    later = _Registry({org(2): None, org(8): None})
+    counts: list[tuple[int, int]] = []
+    retried = retry_unavailable(
+        result, cast(Any, later), on_report=lambda done, total: counts.append((done, total))
+    )
+    assert sorted(later.asked) == sorted([org(2), org(8)])  # only the unanswered ones
+    assert counts[-1] == (2, 2)
+    status = {c.org_nr: c.financial.status for c in retried.candidates if c.financial}
+    assert status[org(2)] == status[org(8)] == "Saknas digitalt"
+    assert status[org(10)] == "Kunde inte läsas"  # unreadable is not retried
+    assert not any("Bolagsverket svarade inte" in n for n in retried.notes)
+    assert retried.reports_fetched == result.reports_fetched

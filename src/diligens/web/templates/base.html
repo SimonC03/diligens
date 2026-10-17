@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Diligens{% endblock %} · Diligens</title>
+  <script>
+    try {
+      var tema = new URLSearchParams(location.search).get("tema") || localStorage.getItem("tema");
+      if (tema === "light" || tema === "dark") document.documentElement.dataset.theme = tema;
+    } catch (e) {}
+  </script>
+  <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      <span class="brand-name">Diligens</span>
+      <span class="brand-sub">Transaktionsstöd</span>
+    </a>
+
+    <nav class="nav-group" aria-label="Arbete">
+      <div class="nav-label">Arbete</div>
+      <a class="nav-item {% if nav == 'oversikt' %}active{% endif %}" href="/">Översikt</a>
+      <a class="nav-item {% if nav == 'analyser' %}active{% endif %}" href="/analyser">Due diligence</a>
+      <a class="nav-item {% if nav == 'screening' %}active{% endif %}" href="/screening">Screening</a>
+    </nav>
+
+    <nav class="nav-group" aria-label="Referens">
+      <div class="nav-label">Referens</div>
+      <a class="nav-item {% if nav == 'metod' %}active{% endif %}" href="/metod">Metod och källor</a>
+      <a class="nav-item {% if nav == 'installningar' %}active{% endif %}" href="/installningar">Inställningar</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="conn"><span>AI-klassning</span><span class="dot {{ 'on' if status.ai else 'off' }}" title="{{ status.model if status.ai else 'Av, ingen nyckel' }}"></span></div>
+      <div class="conn"><span>SCB</span><span class="dot {{ 'on' if status.scb else 'off' }}" title="{{ 'Konfigurerad' if status.scb else 'Ingen nyckel' }}"></span></div>
+      <div class="conn"><span>Bolagsverket</span><span class="dot {{ 'on' if status.bolagsverket else 'off' }}" title="{{ 'Konfigurerad' if status.bolagsverket else 'Inga uppgifter' }}"></span></div>
+      <div class="theme" role="group" aria-label="Tema">
+        <button type="button" data-theme-choice="system">System</button>
+        <button type="button" data-theme-choice="light">Ljust</button>
+        <button type="button" data-theme-choice="dark">Mörkt</button>
+      </div>
+      <div class="local">Körs lokalt på den här datorn</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="content">
+      {% block content %}{% endblock %}
+      <div class="footer">Diligens {{ version }}</div>
+    </div>
+  </main>
+</div>
+
+<div class="drawer-backdrop" data-drawer-backdrop hidden></div>
+<aside class="drawer" data-drawer hidden aria-label="Verifikat">
+  <div class="drawer-head">
+    <strong>Verifikat</strong>
+    <div class="form-row">
+      <a class="btn btn-sm btn-ghost" data-drawer-link href="#">Öppna sida</a>
+      <button class="btn btn-sm" type="button" data-drawer-close>Stäng</button>
+    </div>
+  </div>
+  <div class="drawer-body" data-drawer-body></div>
+</aside>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% macro month_table(rows, months, period_title=None, note=None) %}
+<div class="panel">
+  <div class="table-wrap">
+    <table class="table wide">
+      <thead>
+        <tr>
+          <th class="sticky">TSEK</th>
+          {% for m in months %}<th class="num">{{ m|month }}</th>{% endfor %}
+          {% if period_title %}<th class="num period">{{ period_title }}</th>{% endif %}
+          <th>Källa</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="{{ 'total' if row.total }}">
+          <td class="sticky label nowrap">{{ row.label }}</td>
+          {% for v in row.values %}<td class="num">{{ v|tsek }}</td>{% endfor %}
+          {% if period_title %}<td class="num period">{{ row.period|tsek }}</td>{% endif %}
+          <td class="small faint nowrap">{{ row.source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if note %}<div class="panel-foot">{{ note }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro intro(text) %}
+<p class="lede" style="margin: -8px 0 18px">{{ text }}</p>
+{% endmacro %}

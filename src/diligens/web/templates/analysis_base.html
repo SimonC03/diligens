@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ tab_name }} · {{ meta.company_name }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/analyser">Due diligence</a><span>/</span><span>{{ meta.company_name }}</span></nav>
+<header class="page-head">
+  <div>
+    <h1>{{ meta.company_name }}</h1>
+    <div class="meta-line">
+      <span class="tabular">{{ meta.org_nr }}</span>
+      <span>{{ 'LTM' if meta.basis == 'LTM' else 'Hittills i år' }} {{ meta.period }}</span>
+      <span>{% if meta.use_llm %}AI-klassning med {{ meta.model }}{% else %}Utan AI-klassning{% endif %}</span>
+      <span class="mono">{{ meta.source_name }}</span>
+      <span>{% if meta.reconciled %}<span class="badge pos">Stämmer mot SIE-filen</span>{% else %}<span class="badge neg">Avviker mot SIE-filen</span>{% endif %}</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/analyser/{{ meta.id }}/fil/memo.md">Memo</a>
+    <a class="btn btn-primary" href="/analyser/{{ meta.id }}/fil/dd_pack.xlsx">Ladda ner Excel</a>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Underlag">
+  {% for group, items in tabs %}
+  <div class="tab-group">
+    <div class="tab-group-label">{{ group }}</div>
+    <div class="tab-items">
+      {% for slug, label in items %}
+      <a class="tab {% if slug == tab %}active{% endif %}" href="/analyser/{{ meta.id }}/{{ slug }}" {% if slug == tab %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+
+{% block tab %}{% endblock %}
+
+<form class="section" method="post" action="/analyser/{{ meta.id }}/ta-bort" data-confirm="Ta bort analysen, SIE-filen och underlaget från arbetsytan?">
+  <button class="btn btn-sm btn-ghost btn-danger" type="submit">Ta bort analysen</button>
+</form>
+{% endblock %}

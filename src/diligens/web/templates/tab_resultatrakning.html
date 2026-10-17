@@ -1,0 +1,6 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import month_table, intro %}
+{% block tab %}
+{{ intro("Resultaträkningen per kalendermånad enligt BAS-kontoplanen. Intäkter visas positiva och kostnader negativa. Den markerade kolumnen är perioden som bryggan utgår från.") }}
+{{ month_table(rows, months, ('LTM' if r.bridge.basis == 'LTM' else 'Hittills i år'), "Beräknat från SIE #TRANS per verifikationsdatum. Delsummor är summor av raderna ovan och stämmer med nyckeltalen.") }}
+{% endblock %}

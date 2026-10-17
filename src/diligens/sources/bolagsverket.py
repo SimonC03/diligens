@@ -224,6 +224,10 @@ class BolagsverketClient:
             raise BolagsverketError("Bolagsverket gav ett oväntat svar.")
         return body
 
+    def alive(self) -> bool:
+        """True when the API answers /isalive with OK (login included)."""
+        return self._request("GET", "/isalive").text.strip() == "OK"
+
     def company_name(self, org_nr: str) -> str | None:
         body = self._json(
             self._request("POST", "/organisationer", {"identitetsbeteckning": org_nr10(org_nr)})

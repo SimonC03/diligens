@@ -100,7 +100,7 @@ def full(n: int, oms: str = "6", year: int = 2025) -> dict[str, Any]:
 def fake_scb(units: list[dict[str, Any]], turnover: dict[str, list[str]]) -> ScbClient:
     tables = {
         name: json.loads((FIXTURES / "scb" / f"{name}.json").read_text(encoding="utf-8"))
-        for name in ("omsklkoder", "anstklkoder", "lankoder")
+        for name in ("naringsgrenkoder", "omsklkoder", "anstklkoder", "lankoder")
     }
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -133,6 +133,8 @@ def fake_registry() -> BolagsverketClient:
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth2/token":
             return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path.endswith("/isalive"):
+            return httpx.Response(200, text="OK")
         if request.url.path.endswith("/dokumentlista"):
             org = json.loads(request.content)["identitetsbeteckning"]
             docs = (

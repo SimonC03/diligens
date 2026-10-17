@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+{% block content %}
+{% if job.status == 'körs' %}<noscript><meta http-equiv="refresh" content="2"></noscript>{% endif %}
+<header class="page-head">
+  <div>
+    <h1>{{ job.title }}</h1>
+    <p class="lede">
+      {% if job.kind == 'screening' %}Bolag hämtas från SCB och årsredovisningar från Bolagsverket. Det tar vanligtvis under en minut.
+      {% elif job.kind == 'memo' %}Memot skrivs om med ditt urval i bryggan.
+      {% else %}Bokföringen läses, räknas och stäms av. Med AI-klassning tar det vanligtvis en halv minut.{% endif %}
+    </p>
+  </div>
+</header>
+
+<div class="panel" style="max-width: 640px" data-job="/api/jobb/{{ job.id }}">
+  <div class="panel-head">
+    <h2>Förlopp</h2>
+    <span class="small faint tabular" data-elapsed>{{ '%.1f'|format(job.seconds)|replace('.', ',') }} s</span>
+  </div>
+  <div class="panel-body">
+    <ol class="steps">
+      {% for name in job.stages %}
+      <li class="step {% if loop.index0 < job.current %}done{% elif loop.index0 == job.current %}{{ 'failed' if job.status == 'fel' else 'active' }}{% endif %}">
+        <span class="step-mark"></span>
+        <span>{{ name }}</span>
+        <span class="step-detail">{% if loop.index0 == job.current %}{{ job.detail }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+  <div class="panel-body" data-failure {% if job.status != 'fel' %}hidden{% endif %} style="border-top: 1px solid var(--line)">
+    <div class="callout neg">
+      <div class="callout-title">Körningen avbröts</div>
+      <div data-failure-text>{{ job.error }}</div>
+    </div>
+    {% if job.back %}<a class="btn" href="{{ job.back }}" style="margin-top: 14px">Tillbaka</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

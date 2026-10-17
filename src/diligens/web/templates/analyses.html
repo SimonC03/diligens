@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Due diligence{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Due diligence</h1>
+    <p class="lede">Analyser av SIE4-filer. Varje analys sparas i arbetsytan på den här datorn tillsammans med filen och underlaget.</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="/analyser/ny">Ny analys</a>
+  </div>
+</header>
+
+<div class="panel">
+  {% if analyses %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Bolag</th>
+          <th>Org.nr</th>
+          <th>Period</th>
+          <th>Avstämning</th>
+          <th>Klassning</th>
+          <th>Fil</th>
+          <th class="num">Skapad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in analyses %}
+        <tr class="clickable" data-href="/analyser/{{ a.id }}">
+          <td><a href="/analyser/{{ a.id }}"><strong>{{ a.company_name }}</strong></a></td>
+          <td class="tabular muted nowrap">{{ a.org_nr }}</td>
+          <td class="muted nowrap">{{ a.basis }} {{ a.period }}</td>
+          <td>{% if a.reconciled %}<span class="badge pos">Stämmer</span>{% else %}<span class="badge neg">Avviker</span>{% endif %}</td>
+          <td class="muted nowrap">{% if a.use_llm %}AI, {{ a.model }}{% else %}Utan AI{% endif %}</td>
+          <td class="mono muted">{{ a.source_name }}</td>
+          <td class="num muted">{{ a.created.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <h2>Inga analyser ännu</h2>
+    <p>Ladda upp en SIE4-fil för att skapa det första underlaget.</p>
+    <a class="btn btn-primary" href="/analyser/ny">Ny analys</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

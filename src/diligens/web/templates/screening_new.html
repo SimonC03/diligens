@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Ny screening{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/screening">Screening</a><span>/</span><span>Ny screening</span></nav>
+<header class="page-head">
+  <div>
+    <h1>Ny screening</h1>
+    <p class="lede">Bransch är krav. Storlek och län ger poäng: exakt träff ger full poäng och en klass ifrån halv. Bolag längre ifrån tas bort.</p>
+  </div>
+</header>
+
+{% if error %}<div class="callout neg" role="alert" style="margin-bottom: 20px">{{ error }}{% if not status.scb %} <a class="link" href="/installningar">Inställningar</a>{% endif %}</div>{% endif %}
+
+{% if tables.naringsgrenkoder %}
+<form class="panel" method="post" action="/screening" data-busy="Startar …">
+  <div class="panel-body form">
+    <div class="field" data-sni>
+      <label class="field-label" for="sni-input">Bransch, SNI 2025</label>
+      <input type="hidden" name="sni" value="">
+      <input class="input" id="sni-input" list="sni-list" data-sni-input placeholder="Sök på kod eller namn, till exempel 62100 eller dataprogrammering" autocomplete="off">
+      <datalist id="sni-list">
+        {% for code, text in sni %}<option value="{{ code }} {{ text }}"></option>{% endfor %}
+      </datalist>
+      <div class="tokens" data-sni-tokens></div>
+      <span class="field-help">Primär näringsgren hos SCB. Flera branscher kan väljas.</span>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Omsättning</span>
+      <div class="checks">
+        {% for code, text in tables.omsklkoder.items() %}
+        <label class="check"><input type="checkbox" name="oms_kl" value="{{ code }}"><span class="code">{{ code }}</span>{{ text }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Antal anställda</span>
+      <div class="checks">
+        {% for code, text in tables.anstklkoder.items() %}
+        <label class="check"><input type="checkbox" name="anst_kl" value="{{ code }}"><span class="code">{{ code }}</span>{{ text }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Län för säte</span>
+      <div class="checks">
+        {% for code, text in tables.lankoder.items() if code != '00' %}
+        <label class="check"><input type="checkbox" name="lan" value="{{ code }}">{{ text }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="switch">
+        <input type="checkbox" name="med_bokslut" value="1" {% if status.bolagsverket %}checked{% else %}disabled{% endif %}>
+        <span class="switch-track"></span>
+        <span>
+          <span class="field-label">Hämta årsredovisningar från Bolagsverket</span>
+          <span class="field-help" style="display: block">{% if status.bolagsverket %}Ger nyckeltalspoäng för de bästa profilerna. Bolag med samma poäng vid gränsen tas också med.{% else %}Inga uppgifter för Bolagsverket är konfigurerade; screeningen använder bara SCB.{% endif %}</span>
+        </span>
+      </label>
+      <div class="form-row" style="margin-left: 46px">
+        <label class="small muted" for="topp">Antal bästa profiler</label>
+        <input class="input input-sm" type="number" id="topp" name="topp" min="1" max="100" value="{{ top_default }}">
+      </div>
+    </div>
+
+    <div class="form-foot">
+      <span class="small faint">Tar vanligtvis under en minut. SCB är stängt 04:00 till 04:30.</span>
+      <button class="btn btn-primary" type="submit">Starta screening</button>
+    </div>
+  </div>
+</form>
+{% elif not error %}
+<div class="callout warn">Kodtabellerna från SCB saknas. Kontrollera SCB-nyckeln under <a class="link" href="/installningar">Inställningar</a>.</div>
+{% endif %}
+{% endblock %}

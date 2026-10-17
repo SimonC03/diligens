@@ -1,6 +1,8 @@
 """Diligens CLI. Each command maps to a milestone in docs/PLAN.md."""
 
+import threading
 import time
+import webbrowser
 from collections import Counter
 from contextlib import ExitStack
 from decimal import Decimal
@@ -256,6 +258,26 @@ def _print_screening(result: ScreeningResult) -> None:
         status = c.financial.status if c.financial else "Ej hämtad"
         place = f"{rank:>2}." if rank else "  -"
         typer.echo(f"  {place} {c.total:>3} p  {c.unit.name} ({c.org_nr})  {status}")
+
+
+@app.command("app")
+def run_app(
+    port: Annotated[int, typer.Option(help="Port på den här datorn.")] = 8501,
+    oppna: Annotated[
+        bool, typer.Option("--oppna/--inte-oppna", help="Öppna webbläsaren när appen startat.")
+    ] = True,
+) -> None:
+    """Starta Diligens i webbläsaren. Appen körs bara på den här datorn (127.0.0.1)."""
+    import uvicorn
+
+    from diligens.web.app import create_app
+
+    url = f"http://127.0.0.1:{port}"
+    typer.secho(f"Diligens körs på {url}", bold=True)
+    typer.echo("Avsluta med Ctrl+C.")
+    if oppna:
+        threading.Timer(1.0, webbrowser.open, args=[url]).start()
+    uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")
 
 
 if __name__ == "__main__":

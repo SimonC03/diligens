@@ -1,0 +1,56 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{{ intro("Verifikat som förfiltret valt ut, med kategori, konfidens och status i bryggan. Klicka på en rad för att se verifikatet som det är bokfört.") }}
+<div class="filters">
+  <a class="chip {% if not chosen %}active{% endif %}" href="?">Alla <span class="count">{{ total }}</span></a>
+  {% for name, n in counts if n %}
+  <a class="chip {% if chosen == name %}active{% endif %}" href="?status={{ name|urlencode }}">{{ name }} <span class="count">{{ n }}</span></a>
+  {% endfor %}
+</div>
+<div class="panel">
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Verifikat</th>
+          <th>Datum</th>
+          <th>Konto</th>
+          <th>Text</th>
+          <th class="num">Belopp TSEK</th>
+          <th class="num">Justering</th>
+          <th>Kategori</th>
+          <th class="num">Konfidens</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set f = row.flag %}
+        <tr class="clickable" data-voucher="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref }}">
+          <td class="nowrap"><a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ f.voucher_ref }}">{{ f.voucher_ref }}</a></td>
+          <td class="nowrap tabular muted">{{ f.voucher_date or '' }}</td>
+          <td class="nowrap">{{ f.account }}<div class="cell-sub">{{ f.account_name }}</div></td>
+          <td style="min-width: 260px">{{ f.voucher_text }}<div class="cell-sub">{{ f.rationale }}</div></td>
+          <td class="num">{{ (-f.amount)|tsek }}</td>
+          <td class="num">{{ f.ebitda_adjustment|tsek if f.ebitda_adjustment else '–' }}</td>
+          <td class="nowrap">{{ row.category }}</td>
+          <td class="num">{{ f.confidence|conf }}</td>
+          <td class="nowrap">
+            {% if row.status == 'Justerad' %}<span class="badge accent">Justerad</span>
+            {% elif row.status == 'Kräver granskning' %}<span class="badge warn">Kräver granskning</span>
+            {% elif row.status == 'Normal' %}<span class="badge">Normal</span>
+            {% else %}<span class="badge outline">{{ row.status }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot">Belopp i resultatet: intäkt positiv, kostnad negativ. Källa för varje rad: SIE-verifikatet och kontot.</div>
+  {% else %}
+  <div class="empty">Inga poster med den statusen.</div>
+  {% endif %}
+</div>
+{% endblock %}

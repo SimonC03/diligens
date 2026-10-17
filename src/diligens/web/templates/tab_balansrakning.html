@@ -1,0 +1,6 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import month_table, intro %}
+{% block tab %}
+{{ intro("Balansräkningen vid varje månadsslut: ingående balans plus månadens transaktioner. Eget kapital och skulder visas positiva. Differensraden ska vara noll.") }}
+{{ month_table(rows, months, None, "Årets resultat (beräknat) gör att balansräkningen går ihop innan bokslutet är bokfört.") }}
+{% endblock %}

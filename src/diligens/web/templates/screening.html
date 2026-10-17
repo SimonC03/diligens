@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Screening {{ meta.created.strftime('%Y-%m-%d') }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/screening">Screening</a><span>/</span><span>{{ meta.created.strftime('%Y-%m-%d %H:%M') }}</span></nav>
+<header class="page-head">
+  <div>
+    <h1>{{ meta.title }}</h1>
+    <div class="meta-line">
+      <span>Underlag {{ r.generated }}</span>
+      <span>SCB:s företagsregister och Bolagsverkets årsredovisningar</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="/screening/{{ meta.id }}/fil/long_list.xlsx">Ladda ner long list</a>
+  </div>
+</header>
+
+<div class="panel">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Bolag med vald bransch</div>
+      <div class="stat-value">{{ r.units_scanned|integer }}</div>
+      <div class="stat-sub">Juridiska enheter hos SCB</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Kandidater</div>
+      <div class="stat-value">{{ total }}</div>
+      <div class="stat-sub">Verksamma aktiebolag inom storlekskraven</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Årsredovisningar sökta</div>
+      <div class="stat-value">{{ r.reports_fetched }}</div>
+      <div class="stat-sub">Bästa profilerna, med lika poäng vid gränsen</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Saknas digitalt</div>
+      <div class="stat-value">{{ missing }}</div>
+      <div class="stat-sub">Ingen digital årsredovisning, inga siffror gissas</div>
+    </div>
+  </div>
+</div>
+
+{% if r.notes or unanswered %}
+<div class="section">
+  {% for note in r.notes %}<div class="callout warn">{{ note }}</div>{% endfor %}
+  {% if unanswered %}
+  <div class="callout accent">
+    <div class="form-row" style="justify-content: space-between">
+      <span>{{ unanswered }} årsredovisningar kunde inte hämtas, oftast för att Bolagsverket begränsar antalet anrop. Vänta någon minut och hämta resten; rangordningen räknas om.</span>
+      <form method="post" action="/screening/{{ meta.id }}/komplettera" data-busy="Startar …"><button class="btn btn-sm btn-primary" type="submit">Hämta återstående</button></form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<section class="section">
+  <div class="section-head">
+    <h2>Kandidater</h2>
+    <div class="filters" style="margin: 0">
+      <a class="chip {% if shown == 'sokta' %}active{% endif %}" href="?visa=sokta">Rangordnade <span class="count">{{ looked_up }}</span></a>
+      <a class="chip {% if shown == 'alla' %}active{% endif %}" href="?visa=alla">Alla <span class="count">{{ total }}</span></a>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="num">Rang</th>
+            <th>Poäng</th>
+            <th>Bolag</th>
+            <th>Län</th>
+            <th>Omsättningsklass</th>
+            <th>Anställda</th>
+            <th>Bokslut</th>
+            <th class="num">Omsättning TSEK</th>
+            <th class="num">Tillväxt</th>
+            <th class="num">Rörelsemarginal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="clickable" data-href="/screening/{{ meta.id }}/bolag/{{ row.org_nr }}">
+            <td class="num muted">{{ row.rank or '' }}</td>
+            <td>
+              <span class="score" title="Profil {{ row.profile }} av 60, nyckeltal {{ row.financial if row.financial is not none else 'saknas' }} av 40">
+                <span class="score-value">{{ row.total }}</span>
+                <span class="score-track">
+                  <span class="score-profile" style="width: {{ row.profile }}%"></span>
+                  <span class="score-financial" style="left: {{ row.profile }}%; width: {{ row.financial or 0 }}%"></span>
+                </span>
+              </span>
+            </td>
+            <td style="min-width: 240px"><a href="/screening/{{ meta.id }}/bolag/{{ row.org_nr }}"><strong>{{ row.name }}</strong></a><div class="cell-sub nowrap">{{ row.org_nr|org }} · {{ row.town }}</div></td>
+            <td class="nowrap muted">{{ row.county }}</td>
+            <td class="nowrap muted">{{ row.turnover_class }}</td>
+            <td class="nowrap muted">{{ row.employee_class }}</td>
+            <td class="nowrap">
+              {% if row.status.startswith('Årsredovisning') %}<span class="badge pos">{{ row.status.replace('Årsredovisning ', '') }}</span>
+              {% elif row.status.startswith('Inaktuell') %}<span class="badge warn">Inaktuell {{ row.status.split(' ')[-1] }}</span>
+              {% elif row.status == 'Saknas digitalt' %}<span class="badge outline">Saknas digitalt</span>
+              {% elif row.status == 'Ej hämtad' %}<span class="faint small">Ej hämtad</span>
+              {% else %}<span class="badge neg">{{ row.status }}</span>{% endif %}
+            </td>
+            <td class="num">{{ row.revenue|tsek if row.revenue is not none else '–' }}</td>
+            <td class="num">{{ row.growth|pct }}</td>
+            <td class="num">{{ row.margin|pct }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-foot">Poäng 0 till 100: profil från SCB (ljus del, högst 60) och nyckeltal från årsredovisningen (mörk del, högst 40). Klicka på ett bolag för skäl och källor.</div>
+  </div>
+</section>
+
+<form class="section" method="post" action="/screening/{{ meta.id }}/ta-bort" data-confirm="Ta bort screeningen från arbetsytan?">
+  <button class="btn btn-sm btn-ghost btn-danger" type="submit">Ta bort screeningen</button>
+</form>
+{% endblock %}

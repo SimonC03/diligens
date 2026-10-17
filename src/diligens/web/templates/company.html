@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ c.unit.name }}{% endblock %}
+{% block content %}
+{% set f = c.financial %}
+<nav class="crumbs"><a href="/screening">Screening</a><span>/</span><a href="/screening/{{ meta.id }}">{{ meta.created.strftime('%Y-%m-%d %H:%M') }}</a><span>/</span><span>{{ c.unit.name }}</span></nav>
+<header class="page-head">
+  <div>
+    <h1>{{ c.unit.name }}</h1>
+    <div class="meta-line">
+      <span class="tabular">{{ c.org_nr|org }}</span>
+      <span>{{ row.town }}, {{ row.county }}</span>
+      <span>SNI {{ c.unit.primary_sni }}</span>
+      <span>{{ row.turnover_class }}</span>
+      <span>{{ row.employee_class }} anställda</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="?bokslut=1">Hämta senaste bokslut</a>
+  </div>
+</header>
+
+<div class="panel">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Poäng</div>
+      <div class="stat-value">{{ row.total }}<span class="stat-unit">av 100</span></div>
+      <div class="stat-sub">{% if row.rank %}Rang {{ row.rank }}{% else %}Ej rangordnad{% endif %}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Profil</div>
+      <div class="stat-value">{{ row.profile }}<span class="stat-unit">av 60</span></div>
+      <div class="stat-sub">SCB:s företagsregister</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Nyckeltal</div>
+      <div class="stat-value">{{ row.financial if row.financial is not none else '–' }}<span class="stat-unit">av 40</span></div>
+      <div class="stat-sub">{{ row.status }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-2 section">
+  <section class="panel">
+    <div class="panel-head"><h2>Profil</h2></div>
+    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+      {% for reason in c.profile_reasons %}<li><span>{{ reason }}</span></li>{% endfor %}
+    </ul>
+    <div class="panel-foot">Källa: SCB AFR, juridiska enheter per näringsgren och omsättningsklass.</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Nyckeltal</h2></div>
+    {% if f and (f.revenue or f.ebit) %}
+    <table class="table">
+      <tbody>
+        <tr><td>Nettoomsättning</td><td class="num">{{ f.revenue.value|tsek if f.revenue else '–' }} TSEK</td></tr>
+        <tr><td>Föregående år</td><td class="num">{{ f.revenue_prior.value|tsek if f.revenue_prior else '–' }} TSEK</td></tr>
+        <tr><td>Tillväxt</td><td class="num">{{ f.growth.value|pct if f.growth else '–' }}</td></tr>
+        <tr><td>Rörelseresultat</td><td class="num">{{ f.ebit.value|tsek if f.ebit else '–' }} TSEK</td></tr>
+        <tr><td>Rörelsemarginal</td><td class="num">{{ f.ebit_margin.value|pct if f.ebit_margin else '–' }}</td></tr>
+      </tbody>
+    </table>
+    {% endif %}
+    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+      {% for reason in (f.reasons if f else ['Årsredovisningen söktes inte']) %}<li><span>{{ reason }}</span></li>{% endfor %}
+    </ul>
+    {% if f and f.revenue %}<div class="panel-foot">Källa: {{ f.revenue.source_ref }}</div>{% endif %}
+  </section>
+</div>
+
+{% if error %}<div class="callout warn section">{{ error }}</div>{% endif %}
+
+{% if report %}
+<section class="section panel">
+  <div class="panel-head">
+    <h2>Årsredovisning {{ report.period_start }} till {{ report.period_end }}</h2>
+    <span class="small faint mono">{{ report.document_id }}</span>
+  </div>
+  {% for note in report.notes %}<div class="callout warn" style="margin: 14px 18px 0">{{ note }}</div>{% endfor %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Post</th><th class="num">{{ report.period_end.year }}</th><th class="num">Föregående år</th><th>Källa</th></tr></thead>
+      <tbody>
+        {% for label, key, kind in figure_rows %}
+        {% set now = report.figures.get(key) %}
+        {% set prior = report.figures.get(key ~ '_fg') %}
+        <tr>
+          <td>{{ label }}</td>
+          {% for fig in (now, prior) %}
+          <td class="num">
+            {% if fig is none or fig.value is none %}–
+            {% elif kind == 'tsek' %}{{ fig.value|tsek }}
+            {% elif kind == 'pct' %}{{ fig.value|pct }}
+            {% else %}{{ fig.value|integer }}{% endif %}
+          </td>
+          {% endfor %}
+          <td class="small faint">{{ now.source_ref if now else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot">Belopp i TSEK. Hämtat från Bolagsverket nu, läst ur iXBRL i årsredovisningen.</div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "analysis_base.html" %}
+{% block tab %}
+{% set k = r.kpis %}
+{% set b = r.bridge %}
+{% set basis = 'LTM' if b.basis == 'LTM' else 'hittills i år' %}
+<div class="panel">
+  <div class="stats stats-row">
+    <div class="stat">
+      <div class="stat-label">Nettoomsättning {{ basis }}</div>
+      <div class="stat-value">{{ b.revenue|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">{% if series.tillvaxt is defined and series.tillvaxt.values.get(month) is not none %}Tillväxt {{ series.tillvaxt.values.get(month)|pct }}{% else %}Tillväxt kräver 24 månader{% endif %}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">EBITDA {{ basis }}</div>
+      <div class="stat-value">{{ b.reported|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">Marginal {{ series.ebitda_marginal.values.get(month)|pct }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Justerad EBITDA</div>
+      <div class="stat-value">{{ b.adjusted|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">Marginal {{ adjusted_margin|pct }} på justerad omsättning</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Nettoskuld {{ k.net_debt_month }}</div>
+      <div class="stat-value">{{ k.net_debt|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">{% if net_cash %}Negativ, det vill säga nettokassa{% else %}Räntebärande skulder minus kassa{% endif %}{% if estimated_tax %}, inklusive beräknad skatt{% endif %}</div>
+    </div>
+  </div>
+  <div class="stats stats-row">
+    <div class="stat">
+      <div class="stat-label">Rörelsekapital {{ k.months[-1] }}</div>
+      <div class="stat-value">{{ nwc_last|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">Normalnivå {{ k.nwc_normal.value|tsek }} TSEK</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Normaliseringar</div>
+      <div class="stat-value">{{ adjustments|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">{{ (b.items + b.candidates)|selectattr('included')|list|length }} poster ingår</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Kräver granskning</div>
+      <div class="stat-value">{{ review }}<span class="stat-unit">poster</span></div>
+      <div class="stat-sub">Låg konfidens, ingår inte automatiskt</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Avstämning mot SIE-filen</div>
+      <div class="stat-value">{{ r.reconciliation.total_difference|tsek }}<span class="stat-unit">TSEK diff.</span></div>
+      <div class="stat-sub">{% if r.reconciliation.ok %}Alla konton stämmer{% else %}Se fliken Avstämning{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<section class="section panel">
+  <div class="panel-head">
+    <h2>Omsättning och EBITDA per månad, TSEK</h2>
+    <div class="legend"><span><i class="swatch"></i>Nettoomsättning</span><span><i class="swatch line"></i>EBITDA</span></div>
+  </div>
+  <div class="panel-body">
+    <svg class="chart" viewBox="-56 -8 {{ chart.width + 64 }} {{ chart.height + 34 }}" role="img" aria-label="Nettoomsättning och EBITDA per månad i TSEK">
+      {% for y, label in chart.ticks %}
+      <line class="{{ 'axis' if label == '0' else 'grid' }}" x1="0" x2="{{ chart.width }}" y1="{{ y }}" y2="{{ y }}"></line>
+      <text x="-8" y="{{ y + 4 }}" text-anchor="end">{{ label }}</text>
+      {% endfor %}
+      {% for bar in chart.bars %}
+      <rect class="bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ chart.bar_width }}" height="{{ bar.height }}" rx="1.5"><title>{{ bar.label }}: {{ bar.value|tsek }} TSEK</title></rect>
+      {% if loop.index0 % 3 == 0 %}<text x="{{ bar.x + chart.bar_width / 2 }}" y="{{ chart.height + 16 }}" text-anchor="middle">{{ bar.label }}</text>{% endif %}
+      {% endfor %}
+      <polyline class="line" points="{{ chart.line }}"></polyline>
+      {% for bar in chart.bars %}
+      <circle class="point" cx="{{ bar.x + chart.bar_width / 2 }}" cy="{{ bar.secondary_y }}" r="2.5"><title>{{ bar.label }}: EBITDA {{ k.monthly.ebitda.values.get(bar.month)|tsek }} TSEK</title></circle>
+      {% endfor %}
+    </svg>
+  </div>
+  <div class="panel-foot">Källa: resultaträkningen per månad, beräknad från SIE #TRANS per verifikationsdatum.</div>
+</section>
+
+<div class="grid-2 section">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Normaliseringar</h2>
+      <a class="link small" href="/analyser/{{ meta.id }}/brygga">EBITDA-brygga</a>
+    </div>
+    {% set chosen = (b.items + b.candidates)|selectattr('included')|list %}
+    {% if chosen %}
+    <table class="table">
+      <tbody>
+        {% for item in chosen %}
+        <tr>
+          <td>{{ item.label }}<div class="cell-sub">{{ item.voucher_refs[:4]|join(', ') }}{% if item.voucher_refs|length > 4 %} m.fl.{% endif %}</div></td>
+          <td class="num">{{ item.amount|tsek }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total"><td>Summa justeringar</td><td class="num">{{ adjustments|tsek }}</td></tr>
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty small">Inga justeringar ingår. {% if not meta.use_llm %}Utan AI-klassning föreslås inga, se Flaggade poster.{% endif %}</div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Att följa upp med säljaren</h2>
+      <a class="link small" href="/analyser/{{ meta.id }}/fragor">Alla {{ r.questions|length }} frågor</a>
+    </div>
+    {% if r.questions %}
+    <ol class="ordered">
+      {% for q in r.questions[:4] %}
+      <li><span>{{ q.wording or q.text }}<span class="cell-sub" style="display: block">{{ q.voucher_refs[:3]|join(', ') }}{% if q.amount is not none %} · {{ (-q.amount)|tsek }} TSEK{% endif %}</span></span></li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="empty small">Inga frågor.</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

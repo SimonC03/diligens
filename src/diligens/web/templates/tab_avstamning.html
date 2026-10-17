@@ -1,0 +1,43 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{% set rec = r.reconciliation %}
+{{ intro("Varje kontos årsresultat och utgående balans enligt beräkningen jämfört med SIE-filens #RES och #UB. Avstämningen visar att inget har tappats eller räknats dubbelt.") }}
+<div class="callout {{ 'pos' if rec.ok else 'neg' }}" style="margin-bottom: 16px">
+  <div class="callout-title">{% if rec.ok %}Stämmer: ingen differens mot SIE-filens saldon{% else %}Avviker mot SIE-filen{% endif %}</div>
+  <div class="small muted">{{ rec.rows|length }} kontrollerade saldon · total absolut differens {{ rec.total_difference|sek }} SEK</div>
+</div>
+
+{% if rec.unmapped_accounts %}
+<div class="callout warn">Konton utanför BAS-intervallen, ingår inte i rapporterna: {{ rec.unmapped_accounts|join(', ') }}</div>
+{% endif %}
+{% if rec.vouchers_outside_years %}
+<div class="callout warn">Verifikat daterade utanför räkenskapsåren: {{ rec.vouchers_outside_years[:20]|join(', ') }}{% if rec.vouchers_outside_years|length > 20 %} m.fl.{% endif %}</div>
+{% endif %}
+{% if r.integrity_issues %}
+<div class="callout warn">SIE-filens egen kontroll hittade {{ r.integrity_issues|length }} avvikelser, till exempel {{ r.integrity_issues[0].ref }}.</div>
+{% endif %}
+
+<details class="panel section" {% if off %}open{% endif %}>
+  <summary class="panel-head" style="cursor: pointer"><h2>{% if off %}{{ off|length }} saldon med differens{% else %}Alla {{ rec.rows|length }} saldon{% endif %}</h2><span class="small faint">Visa</span></summary>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Räkenskapsår</th><th>Mot</th><th>Konto</th><th class="num">Beräknat SEK</th><th class="num">Enligt fil SEK</th><th class="num">Differens SEK</th></tr>
+      </thead>
+      <tbody>
+        {% for row in (off or rec.rows) %}
+        <tr>
+          <td class="nowrap muted">{{ years.get(row.year_index, row.year_index) }}</td>
+          <td>#{{ row.against }}</td>
+          <td class="tabular">{{ row.account }}</td>
+          <td class="num">{{ row.computed|sek }}</td>
+          <td class="num">{{ row.stated|sek }}</td>
+          <td class="num">{{ row.difference|sek }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Hittades inte' if code == 404 else 'Fel' }}{% endblock %}
+{% block content %}
+<div class="panel" style="max-width: 560px; margin-top: 40px">
+  <div class="empty">
+    <h2>{{ 'Sidan finns inte' if code == 404 else 'Något gick fel' }}</h2>
+    <p>{{ message }}</p>
+    <a class="btn" href="/">Till översikten</a>
+  </div>
+</div>
+{% endblock %}

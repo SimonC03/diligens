@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Verifikat {{ voucher.ref }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/analyser">Due diligence</a><span>/</span><a href="/analyser/{{ meta.id }}/flaggor">{{ meta.company_name }}</a><span>/</span><span>Verifikat {{ voucher.ref }}</span></nav>
+<div style="max-width: 760px">
+{% include "_voucher.html" %}
+</div>
+{% endblock %}

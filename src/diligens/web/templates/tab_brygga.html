@@ -1,0 +1,72 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{% set b = r.bridge %}
+{{ intro("Från rapporterad till justerad EBITDA för " ~ ('LTM' if b.basis == 'LTM' else 'hittills i år') ~ " " ~ b.period[0] ~ " till " ~ b.period[1] ~ ". Beloppen räknas från verifikaten. Kryssa i vad som ska ingå; summorna, Excel och memot följer ditt val.") }}
+
+<div class="callout warn" data-memo-stale {% if meta.memo_current %}hidden{% endif %} style="margin-bottom: 16px">
+  <div class="form-row" style="justify-content: space-between">
+    <span>Urvalet har ändrats sedan memot skrevs.</span>
+    <form method="post" action="/analyser/{{ meta.id }}/memo" data-busy="Skriver …"><button class="btn btn-sm" type="submit">Skriv om memot</button></form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table class="table" data-bridge="/api/analyser/{{ meta.id }}/urval">
+      <thead>
+        <tr>
+          <th style="width: 72px">Ingår</th>
+          <th>Post</th>
+          <th>Kategori</th>
+          <th>Verifikat</th>
+          <th class="num">Belopp TSEK</th>
+          <th class="num">Nettoomsättning TSEK</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="total">
+          <td></td>
+          <td>Rapporterad EBITDA</td>
+          <td></td>
+          <td class="small faint">Resultaträkningen, periodkolumnen</td>
+          <td class="num">{{ b.reported|tsek }}</td>
+          <td class="num">{{ b.revenue|tsek }}</td>
+        </tr>
+        {% for item in items %}
+        <tr class="{{ '' if item.included else 'subtle' }}">
+          <td><input type="checkbox" data-include {% if item.included %}checked{% endif %} aria-label="Ta med {{ item.label }}" style="accent-color: var(--accent); width: 15px; height: 15px"></td>
+          <td>{{ item.label }}{% if item.note %}<div class="cell-sub">{{ item.note }}</div>{% endif %}</td>
+          <td class="nowrap">{{ categories[item.category] }}</td>
+          <td class="small">
+            {% for ref in item.voucher_refs[:6] %}<a class="link" href="/analyser/{{ meta.id }}/verifikat/{{ ref }}">{{ ref }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if item.voucher_refs|length > 6 %} m.fl. ({{ item.voucher_refs|length }} st){% endif %}
+          </td>
+          <td class="num">{{ item.amount|tsek }}</td>
+          <td class="num">{{ item.revenue_amount|tsek if item.revenue_amount else '–' }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total">
+          <td></td>
+          <td>Justerad EBITDA</td>
+          <td></td>
+          <td class="small faint">Rapporterad plus ingående poster</td>
+          <td class="num" data-total="ebitda">{{ b.adjusted|tsek }}</td>
+          <td class="num" data-total="revenue">{{ b.adjusted_revenue|tsek }}</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>Justerad EBITDA-marginal</td>
+          <td></td>
+          <td class="small faint">Justerad EBITDA delat med justerad nettoomsättning</td>
+          <td class="num" data-total="margin">{{ adjusted_margin|pct }}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot">Poster med låg konfidens och närstående transaktioner listas ej ikryssade. Ägarrelaterade kostnader läggs tillbaka i sin helhet; en marknadsmässig ersättning uppskattas inte.</div>
+</div>
+{% if not items %}
+<div class="callout accent section">Inga poster att justera. {% if not meta.use_llm %}Utan AI-klassning föreslås inga normaliseringar; de förfiltrerade verifikaten finns under Flaggade poster.{% endif %}</div>
+{% endif %}
+{% endblock %}

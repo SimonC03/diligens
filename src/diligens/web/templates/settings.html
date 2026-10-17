@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Inställningar{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Inställningar</h1>
+    <p class="lede">Anslutningar och arbetsyta. Nycklar läses från filen .env i projektmappen och visas aldrig här; starta om appen efter en ändring.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <div class="panel-head"><h2>Anslutningar</h2></div>
+  <table class="table">
+    <thead><tr><th>Tjänst</th><th>Används till</th><th>Inställning i .env</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>AI-klassning</strong></td>
+        <td class="muted">Klassning av verifikat, DD-frågor och memotext</td>
+        <td class="mono muted">ANTHROPIC_API_KEY, DILIGENS_MODEL</td>
+        <td>{% if status.ai %}<span class="badge pos">Konfigurerad, {{ status.model }}</span>{% else %}<span class="badge">Av</span>{% endif %}</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><strong>SCB</strong></td>
+        <td class="muted">Företagsregistret och kodtabeller för screening</td>
+        <td class="mono muted">SCB_API_KEY</td>
+        <td><span class="badge {{ 'pos' if status.scb else '' }}" data-test-result="scb">{{ 'Konfigurerad' if status.scb else 'Saknas' }}</span></td>
+        <td class="num">{% if status.scb %}<button class="btn btn-sm" type="button" data-test="scb">Testa</button>{% endif %}</td>
+      </tr>
+      <tr>
+        <td><strong>Bolagsverket</strong></td>
+        <td class="muted">Digitala årsredovisningar för screening</td>
+        <td class="mono muted">BOLAGSVERKET_CLIENT_ID, BOLAGSVERKET_CLIENT_SECRET</td>
+        <td><span class="badge {{ 'pos' if status.bolagsverket else '' }}" data-test-result="bolagsverket">{{ 'Konfigurerad' if status.bolagsverket else 'Saknas' }}</span></td>
+        <td class="num">{% if status.bolagsverket %}<button class="btn btn-sm" type="button" data-test="bolagsverket">Testa</button>{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="panel-foot">Bolagsverket stänger konton som inte använts på sex månader. En screening eller ett test räcker för att hålla kontot aktivt.</div>
+</section>
+
+<div class="grid-2 section">
+  <section class="panel">
+    <div class="panel-head"><h2>Arbetsyta</h2></div>
+    <div class="panel-body">
+      <dl class="dl">
+        <dt>Mapp</dt><dd class="mono">{{ workspace }}</dd>
+        <dt>Innehåll</dt><dd>SIE-filer, resultat, Excel, memo och long lists</dd>
+        <dt>Ändras med</dt><dd class="mono">DILIGENS_WORKSPACE</dd>
+      </dl>
+    </div>
+    <div class="panel-foot">Arbetsytan ligger utanför versionshanteringen och lämnar aldrig datorn.</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Kodtabeller från SCB</h2>
+      {% if status.scb %}
+      <form method="post" action="/installningar/kodtabeller" data-busy="Hämtar …"><button class="btn btn-sm" type="submit">Hämta på nytt</button></form>
+      {% endif %}
+    </div>
+    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+      {% for name, ok in cached.items() %}
+      <li><span class="mono">{{ name }}</span>{% if ok %}<span class="badge pos">Sparad</span>{% else %}<span class="badge">Hämtas vid första screening</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <div class="panel-foot">Sparas lokalt så att formuläret fungerar utan nätverk.</div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import month_table, intro %}
+{% block tab %}
+{{ intro("Rörelsekapital vid varje månadsslut: rörelsetillgångar minus rörelseskulder, utan skatt och finansiering. Normalnivån är snittet av de senaste tolv månaderna.") }}
+<div class="panel" style="margin-bottom: 16px">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Rörelsekapital {{ r.kpis.months[-1] }}</div>
+      <div class="stat-value">{{ r.kpis.nwc.values.get(r.kpis.months[-1])|tsek }}<span class="stat-unit">TSEK</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Normalnivå, snitt 12 månader</div>
+      <div class="stat-value">{{ r.kpis.nwc_normal.value|tsek }}<span class="stat-unit">TSEK</span></div>
+      <div class="stat-sub">{{ r.kpis.nwc_normal.source_ref }}</div>
+    </div>
+  </div>
+</div>
+{{ month_table(rows, months, None, "Positiva belopp är tillgångar, negativa är skulder. Normaliseringar i bryggan påverkar bara EBITDA, inte rörelsekapitalet.") }}
+{% endblock %}

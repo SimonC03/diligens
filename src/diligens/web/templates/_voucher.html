@@ -1,0 +1,44 @@
+<header class="page-head" style="margin-bottom: 18px">
+  <div>
+    <h1>Verifikat {{ voucher.ref }}</h1>
+    <div class="meta-line">
+      <span class="tabular">{{ voucher.date }}</span>
+      {% if voucher.reg_date %}<span>Registrerat {{ voucher.reg_date }}</span>{% endif %}
+      <span class="mono">{{ meta.source_name }}</span>
+    </div>
+    {% if voucher.text %}<p class="lede">{{ voucher.text }}</p>{% endif %}
+  </div>
+</header>
+
+{% if flagged %}
+<div class="callout {{ 'warn' if flagged.status == 'Kräver granskning' else 'accent' }}" style="margin-bottom: 16px">
+  <div class="callout-title">{{ flagged.category }} · {{ flagged.status }} · konfidens {{ flagged.flag.confidence|conf }}</div>
+  <div>{{ flagged.flag.rationale }}</div>
+  {% if flagged.reasons %}<div class="small faint" style="margin-top: 6px">Förfilter: {{ flagged.reasons }}</div>{% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <table class="table">
+    <thead>
+      <tr><th>Konto</th><th>Kontonamn</th><th class="num">Debet SEK</th><th class="num">Kredit SEK</th></tr>
+    </thead>
+    <tbody>
+      {% for line in voucher.lines %}
+      <tr>
+        <td class="tabular">{{ line.account }}</td>
+        <td>{{ line.name }}{% if line.text %}<div class="cell-sub">{{ line.text }}</div>{% endif %}</td>
+        <td class="num">{{ line.debit|sek }}</td>
+        <td class="num">{{ line.credit|sek }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td></td>
+        <td>Summa</td>
+        <td class="num">{{ voucher.debit_total|sek }}</td>
+        <td class="num">{{ voucher.credit_total|sek }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="panel-foot">Källa: SIE #VER {{ voucher.ref }} med #TRANS, läst direkt ur den uppladdade filen.</div>
+</div>

@@ -1,0 +1,25 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{{ intro("Ett kort memo på svenska. Alla belopp i texten sätts in av koden från analysen.") }}
+{% if not meta.memo_current %}
+<div class="callout warn" style="margin-bottom: 16px">
+  <div class="form-row" style="justify-content: space-between">
+    <span>Urvalet i bryggan har ändrats sedan memot skrevs. Beloppen nedan följer det tidigare urvalet.</span>
+    <form method="post" action="/analyser/{{ meta.id }}/memo" data-busy="Skriver …"><button class="btn btn-sm" type="submit">Skriv om memot</button></form>
+  </div>
+</div>
+{% endif %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>Memo</h2>
+    <div class="form-row">
+      <button class="btn btn-sm" type="button" data-copy="#memo-text">Kopiera</button>
+      <a class="btn btn-sm" href="/analyser/{{ meta.id }}/fil/memo.md">Ladda ner</a>
+    </div>
+  </div>
+  <div class="panel-body">
+    <article class="prose" id="memo-text" data-text="{{ r.memo }}">{{ memo_html|safe }}</article>
+  </div>
+</div>
+{% endblock %}

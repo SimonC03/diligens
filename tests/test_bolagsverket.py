@@ -110,6 +110,8 @@ class Server:
             return httpx.Response(200, json={"dokument": docs})
         if request.url.path.endswith("/dokument/doc-2"):
             return httpx.Response(200, content=PACKAGE, headers={"content-type": "application/zip"})
+        if request.url.path.endswith("/isalive"):
+            return httpx.Response(200, text="OK")
         if request.url.path.endswith("/organisationer"):
             return httpx.Response(
                 200,
@@ -182,6 +184,7 @@ def test_bolagsverket_client_tokens_documents_and_errors() -> None:
     assert report is not None and report.document_id == "doc-2"
     assert report.figures["nettoomsattning"].value == Decimal("32450000")
     assert client.company_name("5599000001") == "Exempelbolaget AB"
+    assert client.alive()  # the connection check in the app's settings page
     assert server.tokens == 1  # token reused while valid
 
     clock[0] = 3600.0  # expired: a new token is fetched

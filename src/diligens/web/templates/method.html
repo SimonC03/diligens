@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Metod och källor{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Metod och källor</h1>
+    <p class="lede">Hur underlaget tas fram, vem som gör vad och varifrån varje siffra kommer.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <div class="flow" style="--steps: 3">
+    <div class="flow-step">
+      <h3>Koden räknar</h3>
+      <p>Alla belopp, nyckeltal, summor och poäng beräknas i kod direkt från källan. Samma indata ger alltid samma siffror.</p>
+      <span class="who code">Deterministiskt</span>
+    </div>
+    <div class="flow-step">
+      <h3>AI föreslår</h3>
+      <p>AI klassar utvalda verifikat, formulerar frågor och skriver memotext. Den skriver aldrig en siffra; belopp sätts in av koden.</p>
+      <span class="who ai">Förslag</span>
+    </div>
+    <div class="flow-step">
+      <h3>Du beslutar</h3>
+      <p>Poster med låg konfidens tas aldrig med automatiskt. Du väljer vad som ingår i justerad EBITDA, och Excel och memo följer valet.</p>
+      <span class="who you">Bedömning</span>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Due diligence, steg för steg</h2></div>
+  <div class="panel">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th style="width: 40px">#</th><th>Steg</th><th>Vad som händer</th><th>Vem</th><th>Syns i</th></tr></thead>
+        <tbody>
+          <tr><td class="faint">1</td><td><strong>Inläsning</strong></td><td>SIE4-filen läses (teckenkodning PC8) med konton, saldon och verifikat. Filens egen balans kontrolleras.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Avstämning</td></tr>
+          <tr><td class="faint">2</td><td><strong>Rapporter</strong></td><td>Varje konto knyts till en rad enligt BAS. Resultat- och balansräkning byggs per månad efter verifikationsdatum.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Resultaträkning, Balansräkning</td></tr>
+          <tr><td class="faint">3</td><td><strong>Nyckeltal</strong></td><td>EBITDA, marginaler, LTM och tillväxt. Rörelsekapital per månadsslut med normalnivå. Nettoskuld med beräknad skatt för år som inte är bokslutade.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Sammanfattning, Rörelsekapital, Nettoskuld</td></tr>
+          <tr><td class="faint">4</td><td><strong>Avstämning</strong></td><td>Beräknade årsresultat och utgående balanser per konto jämförs med filens #RES och #UB.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Avstämning</td></tr>
+          <tr><td class="faint">5</td><td><strong>Förfilter</strong></td><td>Regler väljer ut verifikat värda en närmare titt: väsentliga och runda belopp, återkommande motpart och belopp, ägarrelaterade konton och texter, avvikande månader, intäkter och krediteringar vid periodgränser, återföringar, övriga rörelseintäkter och förluster vid avyttring.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Flaggade poster</td></tr>
+          <tr><td class="faint">6</td><td><strong>Klassning</strong></td><td>De utvalda verifikaten klassas i kategorierna nedan med en konfidens. Svaret valideras mot ett schema.</td><td><span class="who ai" style="margin: 0">AI</span></td><td class="muted">Flaggade poster</td></tr>
+          <tr><td class="faint">7</td><td><strong>Brygga</strong></td><td>Belopp räknas från verifikatens EBITDA-konton. Konfidens från 0,7 justerar; lägre och närstående listas för ditt beslut.</td><td><span class="who code" style="margin: 0">Kod</span> <span class="who you" style="margin: 0 0 0 8px">Du</span></td><td class="muted">EBITDA-brygga</td></tr>
+          <tr><td class="faint">8</td><td><strong>Frågor och memo</strong></td><td>Frågor till säljaren per konto och kategori, och ett memo där koden sätter in alla belopp.</td><td><span class="who ai" style="margin: 0">AI</span></td><td class="muted">DD-frågor, Memo</td></tr>
+          <tr><td class="faint">9</td><td><strong>Leverans</strong></td><td>Excel med tio flikar, formler och källa på varje rad, samt memo i markdown.</td><td><span class="who code" style="margin: 0">Kod</span></td><td class="muted">Ladda ner Excel</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-foot">Utan AI-klassning körs steg 1 till 5, 7 och 9 som vanligt. De förfiltrerade verifikaten hamnar då under Kräver granskning och frågorna följer mallar.</div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Normaliseringskategorier</h2></div>
+  <div class="panel">
+    <table class="table">
+      <tbody>
+        {% for name, text in categories %}
+        <tr><td style="width: 200px"><strong>{{ name }}</strong></td><td class="muted">{{ text }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Screening</h2></div>
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-head"><h3>Urval</h3></div>
+      <div class="panel-body prose">
+        <p>Kandidaterna hämtas från SCB:s företagsregister: verksamma aktiebolag med vald primär näringsgren. Omsättnings- och anställdaklass får ligga högst en klass från målet.</p>
+        <p>För de bästa profilerna hämtas den senaste digitala årsredovisningen från Bolagsverket. Bolag med samma poäng vid gränsen tas också med, så att ordningen aldrig beror på namnet.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Poäng</h3></div>
+      <table class="table">
+        <tbody>
+          <tr><td>Bransch (krav)</td><td class="num">15</td></tr>
+          <tr><td>Omsättningsklass, exakt eller en klass ifrån</td><td class="num">15 / 7</td></tr>
+          <tr><td>Anställdaklass, exakt eller en klass ifrån</td><td class="num">10 / 5</td></tr>
+          <tr><td>Län</td><td class="num">10</td></tr>
+          <tr><td>Verksamt aktiebolag (krav)</td><td class="num">10</td></tr>
+          <tr><td>Tillväxt, minst 10 % eller minst 0 %</td><td class="num">20 / 10</td></tr>
+          <tr><td>Rörelsemarginal, minst 10 % eller minst 5 %</td><td class="num">20 / 10</td></tr>
+          <tr class="total"><td>Högsta poäng</td><td class="num">100</td></tr>
+        </tbody>
+      </table>
+      <div class="panel-foot">Ingen tillväxtpoäng vid negativt rörelseresultat eller årsredovisning äldre än 18 månader.</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Källor och spårbarhet</h2></div>
+  <div class="panel">
+    <table class="table">
+      <thead><tr><th>Uppgift</th><th>Källa</th></tr></thead>
+      <tbody>
+        <tr><td>Rapporter och nyckeltal</td><td class="muted">SIE #TRANS per verifikationsdatum, #IB för balanser</td></tr>
+        <tr><td>Flaggor och justeringar</td><td class="muted">Verifikatserie, nummer och konto i SIE-filen</td></tr>
+        <tr><td>Avstämning</td><td class="muted">SIE #RES och #UB per konto och räkenskapsår</td></tr>
+        <tr><td>Kandidater</td><td class="muted">SCB AFR, juridiska enheter per näringsgren och omsättningsklass</td></tr>
+        <tr><td>Nyckeltal i screening</td><td class="muted">iXBRL-element i årsredovisningen, med kontext och dokument-id hos Bolagsverket</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Begränsningar</h2></div>
+  <div class="panel">
+    <div class="panel-body prose">
+      <ul>
+        <li>Senaste året är ofta inte bokslutat: bokslutsposter saknas och skatten i nettoskulden är uppskattad.</li>
+        <li>Ägarrelaterade kostnader läggs tillbaka i sin helhet; en marknadsmässig ersättning uppskattas inte.</li>
+        <li>BAS-mappningen följer standardkontoplanen. Bolagsspecifika konton behöver mappas per bolag.</li>
+        <li>Avstämningen sker mot SIE-filens saldon, inte mot årsredovisning eller bank.</li>
+        <li>Bolag utan digital årsredovisning får inga nyckeltalspoäng. Screeningen använder rörelsemarginal, eftersom mindre bolag inte alltid redovisar avskrivningar separat.</li>
+        <li>Kunddata med AI-klassning kräver ett avtal om nollagring hos AI-leverantören. Utan AI lämnar inget datorn.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Screening{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>Screening</h1>
+    <p class="lede">Förvärvskandidater ur SCB:s företagsregister, rangordnade med nyckeltal ur Bolagsverkets digitala årsredovisningar.</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="/screening/ny">Ny screening</a>
+  </div>
+</header>
+
+<div class="panel">
+  {% if screenings %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Kriterier</th><th class="num">Kandidater</th><th class="num">Årsredovisningar</th><th class="num">Skapad</th></tr>
+      </thead>
+      <tbody>
+        {% for s in screenings %}
+        <tr class="clickable" data-href="/screening/{{ s.id }}">
+          <td><a href="/screening/{{ s.id }}"><strong>{{ s.title }}</strong></a></td>
+          <td class="num">{{ s.candidates }}</td>
+          <td class="num">{{ s.reports }}</td>
+          <td class="num muted">{{ s.created.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <h2>Inga screeningar ännu</h2>
+    <p>Välj bransch, storlek och län för att hitta kandidater.</p>
+    <a class="btn btn-primary" href="/screening/ny">Ny screening</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

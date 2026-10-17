@@ -1,0 +1,51 @@
+{% extends "analysis_base.html" %}
+{% from "_macros.html" import intro %}
+{% block tab %}
+{% set k = r.kpis %}
+{{ intro("Nettoskulden per " ~ k.net_debt_month ~ ": räntebärande skulder och skatteskulder minus kassa och placeringar. Ett negativt belopp är en nettokassa.") }}
+<div class="panel">
+  <table class="table">
+    <thead>
+      <tr><th>Post</th><th>Konton</th><th class="num">Belopp TSEK</th><th>Källa</th></tr>
+    </thead>
+    <tbody>
+      {% for item in k.net_debt_items %}
+      <tr>
+        <td>{{ item.label }}</td>
+        <td class="tabular muted">{{ item.accounts|join(', ') or '–' }}</td>
+        <td class="num">{{ item.amount|tsek }}</td>
+        <td class="small faint">{{ item.source_ref }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td>{{ 'Nettokassa' if k.net_debt < 0 else 'Nettoskuld' }}</td>
+        <td></td>
+        <td class="num">{{ k.net_debt|tsek }}</td>
+        <td class="small faint">Summa av posterna. Positivt belopp ökar nettoskulden.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% if k.debt_like_items %}
+<section class="section">
+  <div class="section-head"><h2>Att bedöma, ingår inte i nettoskulden</h2></div>
+  <div class="panel">
+    <table class="table">
+      <thead><tr><th>Post</th><th>Konton</th><th class="num">Belopp TSEK</th><th>Källa</th></tr></thead>
+      <tbody>
+        {% for item in k.debt_like_items %}
+        <tr>
+          <td>{{ item.label }}</td>
+          <td class="tabular muted">{{ item.accounts|join(', ') }}</td>
+          <td class="num">{{ item.amount|tsek }}</td>
+          <td class="small faint">{{ item.source_ref }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="panel-foot">Positivt belopp är en skuld, negativt en fordran.</div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
