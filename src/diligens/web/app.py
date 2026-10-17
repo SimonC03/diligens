@@ -418,7 +418,7 @@ def create_app(
             raise HTTPException(400, str(exc)) from exc
         new_selection = None if body.inkludera == proposed else body.inkludera
         if new_selection != meta.selection:
-            meta = meta.model_copy(update={"selection": new_selection, "memo_current": False})
+            meta = meta.model_copy(update={"selection": new_selection})
             space.save_meta(meta)
         margin = bridge.adjusted / bridge.adjusted_revenue if bridge.adjusted_revenue else None
         return JSONResponse(
@@ -441,7 +441,9 @@ def create_app(
             client = make_client(settings) if meta.use_llm and settings.llm_enabled else None
             memo = write_memo(result, client, model=meta.model or settings.diligens_model)
             space.save_memo(item_id, memo)
-            space.save_meta(space.analysis_meta(item_id).model_copy(update={"memo_current": True}))
+            # The memo matches the selection it was written with, even if it changed meanwhile.
+            current = space.analysis_meta(item_id)
+            space.save_meta(current.model_copy(update={"memo_selection": meta.selection}))
             return f"/analyser/{item_id}/memo"
 
         job = jobs.start(

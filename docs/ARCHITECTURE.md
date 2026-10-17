@@ -25,8 +25,43 @@
                  ▼
      export/excel.py ──► output/dd_pack.xlsx, output/memo.md
                  │
-     cli.py  and  mcp_server.py  both call the same pipeline functions
+     cli.py, mcp_server.py and web/app.py all call the same pipeline functions
 ```
+
+## Web app (`web/`)
+
+```
+browser ──► web/app.py (FastAPI, 127.0.0.1 only)
+              ├─ jobs.py       background runs with stages (ANALYSIS_STAGES, SCREENING_STAGES)
+              ├─ workspace.py  analyses and screenings as files in DILIGENS_WORKSPACE
+              ├─ views.py      pure: results to table rows, chart geometry, memo HTML
+              └─ templates/ static/  server rendered pages, small progressive JS
+```
+
+```python
+# web/app.py
+def create_app(
+    settings_provider,
+    workspace,
+    scb_factory,
+    bolagsverket_factory,
+    inline_jobs=False,
+    demo_file=...,
+) -> FastAPI: ...
+
+
+# analysis/bridge.py
+def with_selection(bridge: EbitdaBridge, included: Sequence[bool]) -> EbitdaBridge: ...
+
+
+# screening.py
+def retry_unavailable(result, bolagsverket, today=None, on_report=None) -> ScreeningResult: ...
+```
+
+The browser never computes a figure: the bridge check boxes post the choice and get the
+totals back from `with_selection`. Subtotals in the web statements are sums of computed
+lines and are tested against the KPIs. Hosts other than localhost and state changing
+requests from other sites are refused.
 
 ## Module contracts
 
@@ -91,6 +126,7 @@ def run_analysis(
     client: Anthropic | None = None,
     settings: Settings | None = None,
     related_parties: Sequence[str] = (),
+    progress: Callable[[str], None] | None = None,  # each of ANALYSIS_STAGES
 ) -> AnalysisResult: ...
 ```
 

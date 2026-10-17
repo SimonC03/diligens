@@ -6,13 +6,40 @@ candidates, working capital, net debt, DD questions and a short memo. Every numb
 computed in code and traceable to a voucher; the LLM only classifies and writes.
 
 A second module screens Buy & Build targets using the free SCB and Bolagsverket APIs.
+Both run from a local web app, from the command line or through an MCP client.
 
 The repository contains only synthetic data. A generated demo company with planted
 anomalies, and a facit to score against, make every run reproducible.
 
 ## Status
 
-Work in progress. See `docs/PLAN.md` for milestones.
+Complete for the demo. See `docs/PLAN.md` for milestones and `docs/DEMO.md` for the walkthrough.
+
+## App
+
+```bash
+uv run diligens app            # opens http://127.0.0.1:8501
+```
+
+The app runs on this computer only (127.0.0.1) and keeps every analysis and screening in
+the workspace folder (`DILIGENS_WORKSPACE`, default `data/private/arbetsyta`, gitignored).
+
+- **Due diligence:** upload a SIE4 file (or run the demo company) and follow the run
+  stage by stage. The result opens in tabs grouped as the work flows: summary; income
+  statement, balance sheet, working capital and net debt per month; EBITDA bridge,
+  flagged items and DD questions; reconciliation and memo. Every voucher reference opens
+  the voucher as booked. Ticking items in the bridge recomputes adjusted EBITDA and
+  revenue on the server, and the Excel download follows the choice.
+- **Screening:** choose industry, size classes and counties from SCB's code tables. The
+  long list shows score, reasons and source per company; a company page fetches its
+  latest annual report. If Bolagsverket throttles, one click fetches the remaining
+  reports later.
+- **Metod och källor** explains who does what (code computes, AI proposes, the advisor
+  decides) and where every figure comes from. **Inställningar** shows which connections
+  are configured, never the keys, and can test them.
+
+Every page works without JavaScript; scripts only add progress updates, the bridge
+check boxes, the voucher drawer and the theme choice.
 
 ## Quick start
 
@@ -90,7 +117,7 @@ inside the project are refused so client data never ends up in git.
 ### Manual test checklist
 
 1. `uv run diligens generate --out data/demo/demo_bolag.se` (demo company and facit).
-2. Start the client with the server registered; `diligens` lists four tools.
+2. Start the client with the server registered; `diligens` lists six tools.
 3. Ask: "Analysera data/demo/demo_bolag.se och visa de största normaliseringsposterna."
    Expect a reconciliation "OK", revenue and EBITDA in TSEK, and the bridge items (with AI:
    office move, recruitment fee, the December invoice moved out, owner related fee).

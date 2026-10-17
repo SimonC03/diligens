@@ -249,6 +249,9 @@ def test_bridge_choice_recomputes_and_follows_into_excel(tmp_path: Path, demo: P
             f"/api/analyser/{item_id}/urval", json={"inkludera": [True, True, True]}
         )
         assert not reset.json()["andrat"]
+        assert not reset.json()["memo_aktuellt"]  # the memo was written for the choice
+        again = client.post(f"/api/analyser/{item_id}/urval", json={"inkludera": choice})
+        assert again.json()["memo_aktuellt"]
         bad = client.post(f"/api/analyser/{item_id}/urval", json={"inkludera": [True]})
         assert bad.status_code == 400 and "poster" in bad.json()["error"]
 

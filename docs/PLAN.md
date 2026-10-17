@@ -111,3 +111,21 @@ Branch `m6-screening`. Modules: `sources/scb.py`, `sources/bolagsverket.py`,
 - [ ] Backup screen recording
 - [x] Limitations slide: paper filed reports, BAS mapping per company, client data needs
       zero data retention or local model
+
+## M8 Local app
+
+Branch `m8-platform`. Modules: `web/app.py`, `web/jobs.py`, `web/workspace.py`, `web/views.py`.
+
+- [x] `uv run diligens app` starts the app on 127.0.0.1 only and opens the browser; other
+      hosts and cross-site form posts are refused
+- [x] Due diligence from upload (or the demo company) to result, with live stages; every
+      tab of the Excel pack has a page, every voucher reference opens the voucher as booked
+- [x] Bridge choices are recomputed in Python (`with_selection`), saved, and followed by the
+      Excel download and a rewritten memo
+- [x] Screening from SCB code tables to long list and company pages with sources;
+      unanswered annual reports can be fetched again later
+- [x] Analyses and screenings persist in the local workspace and are listed after a restart
+- [x] Method page explains the flow (code computes, AI proposes, the advisor decides) and
+      the sources; settings show configured connections, never the keys
+- [x] Web statements agree with the KPIs; tests cover pages, flows, choices and safety
+      without network or LLM

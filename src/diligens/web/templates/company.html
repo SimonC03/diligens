@@ -11,7 +11,7 @@
       <span>{{ row.town }}, {{ row.county }}</span>
       <span>SNI {{ c.unit.primary_sni }}</span>
       <span>{{ row.turnover_class }}</span>
-      <span>{{ row.employee_class }} anställda</span>
+      <span>{{ row.employee_class }}</span>
     </div>
   </div>
   <div class="actions">
@@ -42,7 +42,7 @@
 <div class="grid-2 section">
   <section class="panel">
     <div class="panel-head"><h2>Profil</h2></div>
-    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+    <ul class="list">
       {% for reason in c.profile_reasons %}<li><span>{{ reason }}</span></li>{% endfor %}
     </ul>
     <div class="panel-foot">Källa: SCB AFR, juridiska enheter per näringsgren och omsättningsklass.</div>
@@ -61,7 +61,7 @@
       </tbody>
     </table>
     {% endif %}
-    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+    <ul class="list">
       {% for reason in (f.reasons if f else ['Årsredovisningen söktes inte']) %}<li><span>{{ reason }}</span></li>{% endfor %}
     </ul>
     {% if f and f.revenue %}<div class="panel-foot">Källa: {{ f.revenue.source_ref }}</div>{% endif %}

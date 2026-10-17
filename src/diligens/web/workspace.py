@@ -37,9 +37,14 @@ class AnalysisMeta(BaseModel):
     selection: list[bool] | None = Field(
         default=None, description="the advisor's Inkludera choices; None means as proposed"
     )
-    memo_current: bool = Field(
-        default=True, description="False after the selection changed, until the memo is rewritten"
+    memo_selection: list[bool] | None = Field(
+        default=None, description="the selection the memo was written for; None is the proposal"
     )
+
+    @property
+    def memo_current(self) -> bool:
+        """The memo's figures match the bridge as the advisor has it now."""
+        return self.memo_selection == self.selection
 
 
 class ScreeningMeta(BaseModel):

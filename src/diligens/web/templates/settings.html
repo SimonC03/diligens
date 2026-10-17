@@ -59,7 +59,7 @@
       <form method="post" action="/installningar/kodtabeller" data-busy="Hämtar …"><button class="btn btn-sm" type="submit">Hämta på nytt</button></form>
       {% endif %}
     </div>
-    <ul class="list panel-body" style="padding-top: 6px; padding-bottom: 6px">
+    <ul class="list">
       {% for name, ok in cached.items() %}
       <li><span class="mono">{{ name }}</span>{% if ok %}<span class="badge pos">Sparad</span>{% else %}<span class="badge">Hämtas vid första screening</span>{% endif %}</li>
       {% endfor %}

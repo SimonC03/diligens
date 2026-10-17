@@ -227,3 +227,16 @@ Format: `YYYY-MM-DD` decision, reason.
   nettoomsättning TSEK" and computes Justerad nettoomsättning with the same Inkludera
   switches as adjusted EBITDA. On the demo the periodisering of B473 lowers revenue by
   600 TSEK, so the margin is 14,0 % rather than 13,8 % on reported revenue.
+- 2026-10-17 The app is server rendered (FastAPI, Jinja2) with a small script and no build
+  step, rather than Streamlit or a single page app: the look can be made calm and precise,
+  it runs offline with `uv sync` only, and the same Python results drive the CLI, MCP, Excel
+  and the pages. It binds to 127.0.0.1, refuses other hosts and cross-site posts, and keeps
+  files in a gitignored workspace.
+- 2026-10-17 The browser never computes a figure. Bridge choices go to `with_selection`,
+  which recomputes adjusted EBITDA and adjusted revenue; the choice is saved per analysis
+  and the Excel export and memo follow it. A memo counts as current only for the selection
+  it was written with.
+- 2026-10-17 Bolagsverket answered 429 again after about 40 lookups in a later run despite
+  pacing, so the limit is likely a quota over a longer window. Instead of slowing every run,
+  the app offers to fetch the unanswered reports later (`retry_unavailable`); unreadable
+  reports and companies outside the top list are not retried.
