@@ -7,6 +7,7 @@ MCP Python SDK 2.x: the server class is MCPServer (FastMCP was renamed in v2).
 """
 
 import threading
+from contextlib import ExitStack
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -23,7 +24,7 @@ from diligens.export.longlist import export_long_list
 from diligens.formatting import format_tsek
 from diligens.models import AnalysisResult, ScreeningCriteria
 from diligens.pipeline import run_analysis
-from diligens.screening import TOP_DEFAULT, run_screening
+from diligens.screening import TOP_DEFAULT, run_screening, with_ranks
 from diligens.sources.bolagsverket import BolagsverketError, make_bolagsverket_client
 from diligens.sources.scb import ScbError, make_scb_client
 
@@ -378,9 +379,12 @@ def screena_bolag(
     )
     settings = get_settings()
     try:
-        result = run_screening(
-            criteria, make_scb_client(settings), make_bolagsverket_client(settings), top=topp
-        )
+        with ExitStack() as clients:
+            scb = clients.enter_context(make_scb_client(settings))
+            registry = (
+                clients.enter_context(make_bolagsverket_client(settings)) if topp > 0 else None
+            )
+            result = run_screening(criteria, scb, registry, top=topp)
         path = export_long_list(result, _output_folder(mapp)) if mapp else None
     except (ScbError, BolagsverketError) as exc:
         raise ToolError(str(exc)) from exc
@@ -394,19 +398,20 @@ def screena_bolag(
     lines = [
         f"{len(result.candidates)} kandidater av {result.units_scanned} bolag med vald SNI. "
         f"Årsredovisning sökt för {result.reports_fetched}, saknas digitalt för {missing}.",
+        *result.notes,
         "",
         "| Rang | Poäng | Bolag | Org.nr | Ort | Bokslut | Omsättning TSEK | Tillväxt | "
         "Rörelsemarginal | Skäl |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
-    for rank, c in enumerate(result.candidates[:max_rader], start=1):
+    for rank, c in with_ranks(result.candidates)[:max_rader]:
         f = c.financial
         revenue = _tsek(f.revenue.value).replace(" TSEK", "") if f and f.revenue else "-"
         growth = _percent(f.growth.value) if f and f.growth else "-"
         margin = _percent(f.ebit_margin.value) if f and f.ebit_margin else "-"
         reasons = "; ".join(c.profile_reasons[1:] + (f.reasons if f else []))
         lines.append(
-            f"| {rank} | {c.total} | {_cell(c.unit.name)} | {c.org_nr} | "
+            f"| {rank or '-'} | {c.total} | {_cell(c.unit.name)} | {c.org_nr} | "
             f"{c.unit.post_town.title()} | {f.status if f else 'Ej hämtad'} | {revenue} | "
             f"{growth} | {margin} | {_cell(reasons)} |"
         )
@@ -423,8 +428,8 @@ def hamta_bokslut(
     nettoomsättning, rörelseresultat, årets resultat, eget kapital, soliditet och anställda,
     för året och föregående år, med källa per siffra. Saknas den digitalt sägs det."""
     try:
-        registry = make_bolagsverket_client(get_settings())
-        report = registry.latest_report(_clean(org_nr))
+        with make_bolagsverket_client(get_settings()) as registry:
+            report = registry.latest_report(_clean(org_nr))
     except BolagsverketError as exc:
         raise ToolError(str(exc)) from exc
     if report is None:
@@ -452,18 +457,20 @@ def hamta_bokslut(
             return _tsek(figure.value).replace(" TSEK", "")
         if kind == "percent":
             return _percent(figure.value)
-        return str(figure.value.normalize())
+        return f"{figure.value.normalize():f}"
 
     name = report.company_name or org_nr
     lines = [
         f"{name}, årsredovisning {report.period_start} till {report.period_end} "
         f"(dokument {report.document_id}). Belopp i TSEK.",
+        *report.notes,
         "",
         f"| Post | {report.period_end.year} | Föregående år | Källa |",
         "|---|---|---|---|",
     ]
     for label, key, kind in rows:
-        source = figures[key].source_ref if key in figures else ""
+        refs = [figures[k].source_ref for k in (key, key + "_fg") if k in figures]
+        source = "; ".join(refs)
         lines.append(
             f"| {label} | {show(key, kind)} | {show(key + '_fg', kind)} | {_cell(source)} |"
         )

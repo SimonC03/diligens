@@ -1,6 +1,7 @@
 """Diligens CLI. Each command maps to a milestone in docs/PLAN.md."""
 
 from collections import Counter
+from contextlib import ExitStack
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -15,7 +16,7 @@ from diligens.export.longlist import export_long_list
 from diligens.formatting import format_tsek
 from diligens.models import AnalysisResult, ScreeningCriteria, ScreeningResult
 from diligens.pipeline import run_analysis
-from diligens.screening import TOP_DEFAULT, run_screening
+from diligens.screening import TOP_DEFAULT, run_screening, with_ranks
 from diligens.sie.generator import generate_demo_company
 from diligens.sources.bolagsverket import BolagsverketError, make_bolagsverket_client
 from diligens.sources.scb import ScbError, make_scb_client
@@ -207,9 +208,14 @@ def screen(
     )
     settings = get_settings()
     try:
-        scb = make_scb_client(settings)
-        registry = None if utan_bokslut else make_bolagsverket_client(settings)
-        result = run_screening(criteria, scb, registry, top=topp)
+        with ExitStack() as clients:
+            scb = clients.enter_context(make_scb_client(settings))
+            registry = (
+                None
+                if utan_bokslut or topp == 0
+                else clients.enter_context(make_bolagsverket_client(settings))
+            )
+            result = run_screening(criteria, scb, registry, top=topp)
         path = export_long_list(result, out)
     except (ScbError, BolagsverketError) as exc:
         typer.secho(f"Fel: {exc}", fg="red", err=True)
@@ -234,9 +240,12 @@ def _print_screening(result: ScreeningResult) -> None:
         f"Årsredovisning sökt för {result.reports_fetched}, saknas digitalt för {missing}.",
         bold=True,
     )
-    for rank, c in enumerate(result.candidates[:10], start=1):
+    for note in result.notes:
+        typer.secho(f"  {note}", fg="yellow")
+    for rank, c in with_ranks(result.candidates)[:10]:
         status = c.financial.status if c.financial else "Ej hämtad"
-        typer.echo(f"  {rank:>2}. {c.total:>3} p  {c.unit.name} ({c.org_nr})  {status}")
+        place = f"{rank:>2}." if rank else "  -"
+        typer.echo(f"  {place} {c.total:>3} p  {c.unit.name} ({c.org_nr})  {status}")
 
 
 if __name__ == "__main__":

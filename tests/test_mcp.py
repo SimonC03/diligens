@@ -14,6 +14,7 @@ import diligens.mcp_server as server
 from diligens.agent._llm import LlmError
 from diligens.config import Settings
 from diligens.sie.generator import generate_demo_company
+from diligens.sources.bolagsverket import BolagsverketError
 
 ANALYSIS_TOOLS = {"analysera_sie", "flagga_poster", "hamta_nyckeltal", "exportera_excel"}
 TOOLS = ANALYSIS_TOOLS | {"screena_bolag", "hamta_bokslut"}
@@ -201,7 +202,18 @@ async def test_screening_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         report = await client.call_tool("hamta_bokslut", {"org_nr": "559900-0001"})
         assert "Exempelbolaget AB" in _text(report) and "32 450,0" in _text(report)
         assert "se-gen-base:Nettoomsattning" in _text(report)
+        assert "| Medelantal anställda | 24 |" in _text(report)
+        assert "kontext period1" in _text(report)  # prior year source shown too
         missing = await client.call_tool("hamta_bokslut", {"org_nr": "5599000002"})
         assert "Saknas digitalt" in _text(missing)
         empty = await client.call_tool("screena_bolag", {"sni": []})
         assert empty.is_error
+
+        # topp 0 is SCB only: works without Bolagsverket credentials and ranks nobody.
+        def no_credentials(settings: object) -> None:
+            raise BolagsverketError("BOLAGSVERKET_CLIENT_ID saknas i .env.")
+
+        monkeypatch.setattr(server, "make_bolagsverket_client", no_credentials)
+        scb_only = await client.call_tool("screena_bolag", {"sni": ["62100"], "topp": 0})
+        assert not scb_only.is_error, _text(scb_only)
+        assert "| - |" in _text(scb_only) and "Ej hämtad" in _text(scb_only)
