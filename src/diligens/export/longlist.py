@@ -176,8 +176,10 @@ def export_long_list(result: ScreeningResult, out_dir: Path) -> Path:
         ),
         (
             "Rang",
-            "Bara bolag vars årsredovisning har sökts rangordnas. Ej hämtade följer efter i "
-            "profilordning, utan rang. Tomt i Nyckeltal betyder att poäng saknas, inte noll.",
+            "Bara bolag med nyckeltalspoäng rangordnas, så att varje rang jämför samma slags "
+            "poäng. Sökta bolag utan nyckeltal (saknas digitalt, kunde inte läsas eller "
+            "hämtas) följer utan rang i profilordning, sist de som inte söktes. Tomt i "
+            "Nyckeltal betyder att poäng saknas, inte noll.",
             "Poängregel",
         ),
         *(("Varning", note, "Körningen") for note in result.notes),

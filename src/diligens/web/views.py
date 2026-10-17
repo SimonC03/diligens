@@ -22,7 +22,7 @@ from diligens.export.excel import (
 )
 from diligens.formatting import format_tsek
 from diligens.models import AnalysisResult, EbitdaBridge, Flag, Ledger, ScreeningResult
-from diligens.screening import with_ranks
+from diligens.screening import looked_up, with_ranks
 
 ZERO = Decimal(0)
 MISSING = "–"
@@ -397,7 +397,7 @@ def candidate_rows(result: ScreeningResult) -> list[CandidateRow]:
                 revenue=f.revenue.value if f and f.revenue else None,
                 growth=f.growth.value if f and f.growth else None,
                 margin=f.ebit_margin.value if f and f.ebit_margin else None,
-                looked_up=rank is not None,
+                looked_up=looked_up(c),
             )
         )
     return rows

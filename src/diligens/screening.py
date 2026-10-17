@@ -65,20 +65,25 @@ def _shortlist(candidates: list[Candidate], top: int) -> tuple[list[Candidate], 
     return tied, notes
 
 
-def _looked_up(candidate: Candidate) -> bool:
+def looked_up(candidate: Candidate) -> bool:
     """Its annual report was searched for, whatever the outcome."""
     return candidate.financial is not None and candidate.financial.status != NOT_FETCHED.status
 
 
+def has_figures(candidate: Candidate) -> bool:
+    """It got financial points from an annual report."""
+    return candidate.financial is not None and candidate.financial.points is not None
+
+
 def with_ranks(candidates: list[Candidate]) -> list[tuple[int | None, Candidate]]:
-    """Rank 1, 2, ... for companies whose annual report was looked up; None for the rest,
-    which follow unranked since their financial score is unknown."""
+    """Rank 1, 2, ... for companies with financial points only, so every rank compares
+    the same kind of score. The rest follow unranked with their status."""
     out: list[tuple[int | None, Candidate]] = []
     rank = 0
     for c in candidates:
-        looked_up = _looked_up(c)
-        rank += looked_up
-        out.append((rank if looked_up else None, c))
+        ranked = has_figures(c)
+        rank += ranked
+        out.append((rank if ranked else None, c))
     return out
 
 
@@ -138,9 +143,14 @@ def _look_up(
     return scored, unavailable.is_set()
 
 
-def _ranked(looked_up: list[Candidate], rest: list[Candidate]) -> list[Candidate]:
-    """Looked-up companies rank by total score; the rest follow by profile, unranked."""
-    return sorted(looked_up, key=lambda c: (-c.total, c.unit.name)) + rest
+def _ranked(searched: list[Candidate], rest: list[Candidate]) -> list[Candidate]:
+    """Companies with figures by total score; then the ones searched without figures
+    (missing, unreadable, unanswered) by profile; then those never searched."""
+    scored = sorted((c for c in searched if has_figures(c)), key=lambda c: (-c.total, c.unit.name))
+    unscored = sorted(
+        (c for c in searched if not has_figures(c)), key=lambda c: (-c.profile_points, c.unit.name)
+    )
+    return scored + unscored + rest
 
 
 def retry_unavailable(
@@ -159,12 +169,12 @@ def retry_unavailable(
     scored, unavailable = _look_up(retry, bolagsverket, today, on_report)
     by_org = {c.org_nr: c for c in scored}
     updated = [by_org.get(c.org_nr, c) for c in result.candidates]
-    looked_up = [c for c in updated if _looked_up(c)]
-    rest = [c for c in updated if not _looked_up(c)]
+    searched = [c for c in updated if looked_up(c)]
+    rest = [c for c in updated if not looked_up(c)]
     notes = [n for n in result.notes if n != UNAVAILABLE_NOTE]
     if unavailable:
         notes.append(UNAVAILABLE_NOTE)
-    return result.model_copy(update={"candidates": _ranked(looked_up, rest), "notes": notes})
+    return result.model_copy(update={"candidates": _ranked(searched, rest), "notes": notes})
 
 
 def run_screening(

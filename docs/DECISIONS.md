@@ -253,3 +253,8 @@ Format: `YYYY-MM-DD` decision, reason.
 - 2026-10-17 Percentages are rounded half up everywhere (screen, memo), as Excel shows them.
   The net debt line is always labelled Nettoskuld; a negative amount is net cash, as in
   the Excel pack.
+- 2026-10-17 Screening ranks only companies with financial points, so every rank compares
+  the same kind of score (decided by the repo owner). Companies searched without figures
+  (Saknas digitalt, Kunde inte läsas, Kunde inte hämtas) follow unranked by profile, then
+  those never searched. This replaces the earlier rule that every searched company is
+  ranked.

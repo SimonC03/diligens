@@ -16,8 +16,15 @@ import diligens.cli as cli
 import diligens.screening as screening
 from diligens.analysis.screening import financial_score, profile_score, select_candidates
 from diligens.cli import app
-from diligens.models import AnnualReport, Figure, ScbUnit, ScreeningCriteria
-from diligens.screening import SCREENING_STAGES, retry_unavailable, run_screening
+from diligens.models import (
+    AnnualReport,
+    Candidate,
+    Figure,
+    FinancialScore,
+    ScbUnit,
+    ScreeningCriteria,
+)
+from diligens.screening import SCREENING_STAGES, retry_unavailable, run_screening, with_ranks
 from diligens.sources.bolagsverket import BolagsverketUnavailable, ReportNotReadable
 from diligens.sources.scb import ScbClient, ScbError
 
@@ -180,7 +187,7 @@ def test_screen_writes_long_list_with_sources_and_missing_reports(
     for row in rows[1:]:
         assert row["Bokslut"] == "Saknas digitalt"
         assert row["Nettoomsättning TSEK"] is None and row["Nyckeltal"] is None  # not 0
-        assert row["Rang"] is not None  # looked up, so ranked
+        assert row["Rang"] is None  # no figures to compare, so listed without a rank
     assert "en klass från målet" in rows[1]["Skäl"]  # turnover class 7 next to 6
     assert "annat län" in rows[2]["Skäl"]
 
@@ -329,3 +336,26 @@ def test_retry_fetches_only_what_bolagsverket_did_not_answer(
     assert status[org(10)] == "Kunde inte läsas"  # unreadable is not retried
     assert not any("Bolagsverket svarade inte" in n for n in retried.notes)
     assert retried.reports_fetched == result.reports_fetched
+
+
+def test_only_companies_with_figures_are_ranked() -> None:
+    def candidate(n: int, profile: int, financial: FinancialScore | None) -> Candidate:
+        return Candidate(
+            unit=_unit(n), profile_points=profile, profile_reasons=[], financial=financial
+        )
+
+    scored = FinancialScore(points=20, reasons=[], status="Årsredovisning 2025-12-31")
+    missing = FinancialScore(points=None, reasons=[], status="Saknas digitalt")
+    throttled = FinancialScore(points=None, reasons=[], status="Kunde inte hämtas")
+    ordered = screening._ranked(
+        [candidate(1, 55, scored), candidate(2, 60, throttled), candidate(9, 50, missing)],
+        [candidate(10, 60, screening.NOT_FETCHED)],
+    )
+    # 55 + 20 ranks first; the perfect profile without figures is not ranked below it.
+    ranks = [(c.org_nr, rank) for rank, c in with_ranks(ordered)]
+    assert ranks == [
+        ("5599000001", 1),
+        ("5599000002", None),
+        ("5599000009", None),
+        ("5599000010", None),
+    ]
