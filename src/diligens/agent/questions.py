@@ -25,7 +25,8 @@ from diligens.models import DDQuestion, Flag, FlagCategory, Ledger
 log = logging.getLogger(__name__)
 
 ZERO = Decimal("0")
-_DASH = re.compile(r"\s[-–—]\s")
+# A dash between words, not a list marker at the start of a line.
+_DASH = re.compile(r"(?<=\S)[ \t][-–—][ \t]")
 
 ORDER: tuple[FlagCategory, ...] = (
     "periodisering",
@@ -174,6 +175,10 @@ def _check(ids: list[str]) -> Callable[[_LlmQuestions], list[str]]:
     return check
 
 
+def _question(group: _Group, wording: dict[str, str]) -> str:
+    return wording.get(group.id, TEMPLATES[group.category].format(name=group.name.lower()))
+
+
 def dd_questions(
     flags: list[Flag],
     ledger: Ledger,
@@ -207,8 +212,8 @@ def dd_questions(
             wording = {q.id: q.text.strip() for q in parsed.questions}
     return [
         DDQuestion(
-            text=wording.get(g.id, TEMPLATES[g.category].format(name=g.name.lower()))
-            + _reference(g),
+            text=_question(g, wording) + _reference(g),
+            wording=_question(g, wording),
             voucher_refs=[f.voucher_ref for f in g.flags],
             accounts=[g.account],
             amount=g.amount,

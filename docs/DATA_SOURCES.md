@@ -93,10 +93,42 @@ here.
   SCB provides the candidate list.
 - Only digitally filed annual reports are included. Paper filed reports are missing: show
   "Saknas digitalt", never estimate.
-- Endpoints seen in third party clients (verify): token
-  `https://portal.api.bolagsverket.se/oauth2/token`, base
-  `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1`, test environment under
-  `accept2`. Operations for organisations, document list and document download (zip).
+- Verified 2026-10-17 with our credentials (spec from the Developer Portal REST API,
+  `https://portal.api.bolagsverket.se/api/am/devportal/v3/apis/ff8f9a91-1fdd-4705-8836-c1906581162f/swagger`):
+  - Base `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1`, the only environment
+    listed ("Default"). `BOLAGSVERKET_ENV` has no effect on this API.
+  - The token must request the scopes `vardefulla-datamangder:read` (data) and
+    `vardefulla-datamangder:ping` (`/isalive`); without a scope the token only gets
+    `default`. Tokens last 3600 s.
+  - `GET /isalive` returns 200 "OK".
+  - `POST /organisationer` with `{"identitetsbeteckning": "5299999994"}` (the spec's test
+    number, ten digits without dash) returns 200 with `organisationer[]`. Fields include
+    `organisationsnamn`, `organisationsform`, `juridiskForm`, `naringsgrenOrganisation`
+    (SNI), `postadressOrganisation`, `verksamOrganisation`, `avregistreradOrganisation`,
+    `verksamhetsbeskrivning`, `organisationsdatum`.
+  - `POST /dokumentlista` with the same body returns 200 with `dokument[]`;
+    `GET /dokument/{dokumentId}` downloads one document (annual report zip).
+  - Errors use the `ApiError` schema.
+
+### Access (credentials received 2026-10-17)
+
+Confirmed by Bolagsverket when the credentials were issued:
+
+- Application with access to the API `VärdefullaDatamängder`. API description on the
+  Developer Portal: https://portal.api.bolagsverket.se/devportal/apis/ff8f9a91-1fdd-4705-8836-c1906581162f
+  (all APIs: https://portal.api.bolagsverket.se/devportal/apis).
+- Access token through OAuth2 Client Credentials Grant
+  (https://datatracker.ietf.org/doc/html/rfc6749#section-4.4). Token endpoint:
+  `https://portal.api.bolagsverket.se/oauth2/token`.
+- Credentials arrive as an encrypted zip with two lines: client id, then client secret. The
+  password comes by separate SMS. They go into `.env` only (`BOLAGSVERKET_CLIENT_ID`,
+  `BOLAGSVERKET_CLIENT_SECRET`), never into the repo, logs or chat.
+- An inactive account is closed after 6 months. Make at least one call before 2027-04-17,
+  then keep it in use.
+- Report lost or leaked credentials to Bolagsverket at once (contact form below).
+- Service status: https://bolagsverket.se/driftsinformation.232.html
+- News and releases (RSS): https://bolagsverket.se/apierochoppnadata/nyheterochreleaserforvaraapier/prenumererapanyheterochreleaserviarssflode.5499.html
+- Questions and fault reports: https://www.bolagsverket.se/apierochoppnadata/apiforaktuellforetagsinformationbetaversion/kontaktaossomapietmedaktuellforetagsinformationbetaversionxmlochaviseringar.3996.html
 - The full "API för att hämta företagsinformation" costs money and needs an agreement.
   Do not use it.
 

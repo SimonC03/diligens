@@ -9,6 +9,7 @@ import typer
 
 from diligens import __version__
 from diligens.agent._llm import LlmError
+from diligens.export.excel import export_dd_pack
 from diligens.formatting import format_tsek
 from diligens.models import AnalysisResult
 from diligens.pipeline import run_analysis
@@ -72,7 +73,20 @@ def analyze(
         typer.secho(f"AI-fel: {exc}", fg="red", err=True)
         raise typer.Exit(code=EXIT_ERROR) from exc
     _print_summary(result)
-    typer.echo(f"\nExcel och memo till {out} kommer i M4.")
+    memo = out / "memo.md"
+    try:
+        workbook = export_dd_pack(result, out)
+        memo.write_text(result.memo, encoding="utf-8")
+    except OSError as exc:
+        typer.secho(
+            f"Fel: kan inte skriva till {out} ({exc.strerror}). Stäng filen i Excel och kör igen.",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(code=EXIT_ERROR) from exc
+    typer.secho("\nUnderlag", bold=True)
+    typer.echo(f"  {workbook}")
+    typer.echo(f"  {memo}")
     if not result.reconciliation.ok:
         raise typer.Exit(code=EXIT_RECONCILIATION)
 

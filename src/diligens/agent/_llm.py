@@ -101,7 +101,7 @@ def ask_structured[T: pydantic.BaseModel](
         if response.stop_reason == "refusal":
             return None
         if response.stop_reason == "max_tokens":
-            feedback = "Svaret blev för långt och avbröts. Skriv kortare motiveringar."
+            feedback = "Svaret blev för långt och avbröts. Svara kortare."
             continue
         answer = next((b.text for b in response.content if b.type == "text"), "")
         try:

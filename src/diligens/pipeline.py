@@ -8,6 +8,7 @@ import anthropic
 
 from diligens.agent.client import make_client
 from diligens.agent.flagging import flag_vouchers
+from diligens.agent.memo import write_memo
 from diligens.agent.prefilter import prefilter
 from diligens.agent.questions import dd_questions
 from diligens.analysis.bridge import ebitda_bridge
@@ -62,7 +63,7 @@ def run_analysis(
     flagging = flag_vouchers(hits, ledger, client, model=model)
     bridge = ebitda_bridge(kpis, ledger, flagging.flags)
     questions = dd_questions(bridge.flags, ledger, client, model=model)
-    return AnalysisResult(
+    result = AnalysisResult(
         source=sie_path.name,
         company_name=ledger.company_name,
         org_nr=ledger.org_nr,
@@ -78,3 +79,4 @@ def run_analysis(
         bridge=bridge,
         questions=questions,
     )
+    return result.model_copy(update={"memo": write_memo(result, client, model=model)})

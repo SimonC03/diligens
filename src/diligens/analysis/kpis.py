@@ -6,12 +6,14 @@ items are positive when they increase net debt.
 
 from decimal import ROUND_HALF_UP, Decimal
 
+from diligens.analysis.mapping import BAS_LINES
 from diligens.analysis.statements import months_of
 from diligens.models import (
     Figure,
     FiscalYear,
     KPIs,
     KpiSeries,
+    Mapping,
     NetDebtItem,
     NetDebtKind,
     Statements,
@@ -210,12 +212,26 @@ def _balance_sum(
     return accounts, sum((statements.account_balances[a][month] for a in accounts), ZERO)
 
 
-def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:
-    accounts = [
+def nwc_accounts(statements: Statements) -> list[str]:
+    """Balance sheet accounts that make up working capital (DOMAIN.md section 5)."""
+    return [
         a
         for a in statements.account_balances
         if _in(a, _NWC_RANGES) and not _in(a, _NWC_EXCLUDED_RANGES)
     ]
+
+
+def nwc_lines(statements: Statements, mapping: Mapping) -> list[tuple[str, list[str]]]:
+    """Working capital accounts grouped per balance sheet line, in BAS order."""
+    by_line: dict[str, list[str]] = {}
+    for account in nwc_accounts(statements):
+        by_line.setdefault(mapping.accounts[account].line, []).append(account)
+    order = [line for _, _, line, statement in BAS_LINES if statement == "BR"]
+    return [(line, sorted(by_line[line])) for line in order if line in by_line]
+
+
+def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:
+    accounts = nwc_accounts(statements)
     values: dict[str, Decimal | None] = {
         m: sum((statements.account_balances[a][m] for a in accounts), ZERO)
         for m in statements.months
@@ -267,6 +283,7 @@ def _estimated_taxes(statements: Statements, tax_rate: Decimal) -> list[NetDebtI
             continue
         pre_tax = -total([a for a in movements if int(a) < 8900])
         amount = max(ZERO, (pre_tax * tax_rate).quantize(CENT, rounding=ROUND_HALF_UP))
+        rate = f"{tax_rate * 100:.1f}".replace(".", ",")
         items.append(
             NetDebtItem(
                 label=f"Beräknad skatt {_year_label(year)} (ej bokförd)",
@@ -274,7 +291,7 @@ def _estimated_taxes(statements: Statements, tax_rate: Decimal) -> list[NetDebtI
                 accounts=[],
                 amount=amount,
                 source_ref=(
-                    f"{tax_rate * 100:.1f} % av resultat före skatt {months[0]} till "
+                    f"{rate} % av resultat före skatt {months[0]} till "
                     f"{months[-1]} (konton 3000–8899). Antagande: året är inte bokslutat "
                     "och ingen skatt är bokförd på 8900–8989."
                 ),

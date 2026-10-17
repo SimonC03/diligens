@@ -7,6 +7,7 @@ only when the voucher has a single EBITDA account. A collective voucher (payroll
 daily sales journal) goes to review, since adding it back whole would overstate EBITDA.
 """
 
+import re
 from collections import defaultdict
 from decimal import Decimal
 
@@ -65,55 +66,119 @@ def _period(kpis: KPIs, ledger: Ledger) -> tuple[str, Decimal, list[str]]:
     return "YTD", kpis.ytd["ebitda"].values[month] or ZERO, period
 
 
+_CANDIDATE_LABELS: dict[FlagCategory, str] = {
+    **{c: label for c, (label, _) in _ADJUSTING.items()},
+    "narstaende": "Närstående",
+}
+_THRESHOLD = f"{REVIEW_CONFIDENCE:.1f}".replace(".", ",")
+_RELATED_NOTE = (
+    "Närstående part, ej justerat. Bedöm om villkoren är marknadsmässiga; med Inkludera 1 "
+    "läggs hela beloppet tillbaka."
+)
+_REVIEW_NOTE = f"Kräver granskning, konfidens under {_THRESHOLD}."
+
+
+def _text(voucher: Voucher) -> str:
+    """Voucher text without dates and numbers, so a monthly series reads as one item."""
+    words = re.sub(r"[\d\-./:]+", " ", voucher.text).split()
+    return re.sub(r"\s+,", ",", " ".join(words)).strip(" ,")[:60]
+
+
+def _item(
+    *,
+    category: FlagCategory,
+    label: str,
+    account: str,
+    members: list[Voucher],
+    ledger: Ledger,
+    period: list[str],
+    note: str | None,
+    included: bool,
+) -> BridgeItem:
+    name = ledger.accounts[account].name if account in ledger.accounts else account
+    refs = [v.ref for v in members]
+    shown = ", ".join(refs[:5]) + (f" m.fl. ({len(refs)} st)" if len(refs) > 5 else "")
+    text = _text(members[0])
+    return BridgeItem(
+        category=category,
+        label=f"{label}: {name}" + (f", {text}" if text else ""),
+        accounts=sorted({a for v in members for a in ebitda_lines(v)}),
+        voucher_refs=refs,
+        amount=sum((ebitda_effect(v) for v in members), ZERO),
+        note=note,
+        source_ref=(
+            f"Verifikat {shown}, EBITDA-konton på verifikaten, {period[0]} till {period[-1]}"
+        ),
+        included=included,
+    )
+
+
 def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge:
-    """LTM (or YTD when there is no LTM yet) EBITDA, adjusted by confident flags."""
+    """LTM (or YTD when there is no LTM yet) EBITDA, adjusted by confident flags.
+
+    Related party items and low confidence items of an adjusting category are listed as
+    candidates with included=False, so the advisor can switch them on in the Excel bridge.
+    """
     basis, reported, period = _period(kpis, ledger)
     in_period = set(period)
 
     vouchers = {v.ref: v for v in ledger.vouchers}
-    groups: dict[tuple[FlagCategory, str], list[tuple[Flag, Voucher]]] = defaultdict(list)
+    groups: dict[tuple[FlagCategory, str], list[Voucher]] = defaultdict(list)
+    candidates: dict[tuple[str, FlagCategory, str], list[Voucher]] = defaultdict(list)
     review: list[Flag] = []
     not_adjusted: list[Flag] = []
     outside: list[Flag] = []
     out: list[Flag] = []
     for flag in flags:
         voucher = vouchers[flag.voucher_ref]
+        single = len(ebitda_lines(voucher)) <= 1
+        inside = month_key(voucher.date) in in_period
         adjustment = ZERO
         if flag.category != "normal" and flag.confidence < REVIEW_CONFIDENCE:
             review.append(flag)
+            if flag.category in _CANDIDATE_LABELS and single and inside:
+                candidates[("granskning", flag.category, flag.account)].append(voucher)
         elif flag.category in _NOT_ADJUSTING:
             not_adjusted.append(flag)
+            if flag.category == "narstaende" and single and inside:
+                candidates[("narstaende", flag.category, flag.account)].append(voucher)
         elif flag.category in _ADJUSTING:
-            if len(ebitda_lines(voucher)) > 1:
+            if not single:
                 flag = flag.model_copy(update={"rationale": flag.rationale + COLLECTIVE_NOTE})
                 review.append(flag)
-            elif month_key(voucher.date) not in in_period:
+            elif not inside:
                 outside.append(flag)
             else:
                 adjustment = ebitda_effect(voucher)
-                groups[(flag.category, flag.account)].append((flag, voucher))
+                groups[(flag.category, flag.account)].append(voucher)
         out.append(flag.model_copy(update={"ebitda_adjustment": adjustment}))
 
-    items: list[BridgeItem] = []
-    for (category, account), members in sorted(groups.items()):
-        label, note = _ADJUSTING[category]
-        name = ledger.accounts[account].name if account in ledger.accounts else account
-        refs = [f.voucher_ref for f, _ in members]
-        shown = ", ".join(refs[:5]) + (f" m.fl. ({len(refs)} st)" if len(refs) > 5 else "")
-        items.append(
-            BridgeItem(
-                category=category,
-                label=f"{label}: {name}",
-                accounts=sorted({a for _, v in members for a in ebitda_lines(v)}),
-                voucher_refs=refs,
-                amount=sum((ebitda_effect(v) for _, v in members), ZERO),
-                note=note,
-                source_ref=(
-                    f"Verifikat {shown}, EBITDA-konton på verifikaten, "
-                    f"{period[0]} till {period[-1]}"
-                ),
-            )
+    items = [
+        _item(
+            category=category,
+            label=_ADJUSTING[category][0],
+            account=account,
+            members=members,
+            ledger=ledger,
+            period=period,
+            note=_ADJUSTING[category][1],
+            included=True,
         )
+        for (category, account), members in sorted(groups.items())
+    ]
+    listed = [
+        _item(
+            category=category,
+            label=_CANDIDATE_LABELS[category],
+            account=account,
+            members=members,
+            ledger=ledger,
+            period=period,
+            note=_RELATED_NOTE if kind == "narstaende" else _REVIEW_NOTE,
+            included=False,
+        )
+        for (kind, category, account), members in sorted(candidates.items())
+    ]
 
     return EbitdaBridge(
         basis=basis,
@@ -125,5 +190,6 @@ def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge
         review=review,
         not_adjusted=not_adjusted,
         outside_period=outside,
+        candidates=listed,
         flags=out,
     )
