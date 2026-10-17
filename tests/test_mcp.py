@@ -7,13 +7,16 @@ from typing import Any
 
 import pytest
 from mcp import Client
+from test_scb import unit as scb_unit
+from test_screening import _fake_registry, _fake_scb
 
 import diligens.mcp_server as server
 from diligens.agent._llm import LlmError
 from diligens.config import Settings
 from diligens.sie.generator import generate_demo_company
 
-TOOLS = {"analysera_sie", "flagga_poster", "hamta_nyckeltal", "exportera_excel"}
+ANALYSIS_TOOLS = {"analysera_sie", "flagga_poster", "hamta_nyckeltal", "exportera_excel"}
+TOOLS = ANALYSIS_TOOLS | {"screena_bolag", "hamta_bokslut"}
 
 
 @pytest.fixture
@@ -41,7 +44,7 @@ async def test_tools_are_listed_with_swedish_descriptions() -> None:
     for tool in tools.values():
         assert tool.description and any(c in tool.description for c in "åäö"), tool.name
         properties = tool.input_schema["properties"]
-        assert "sie_fil" in properties
+        assert tool.name not in ANALYSIS_TOOLS or "sie_fil" in properties
         assert all(p.get("description") for p in properties.values()), tool.name
 
 
@@ -177,3 +180,28 @@ async def test_no_key_note_and_cache_rules(
         os.utime(copy, ns=(copy.stat().st_atime_ns, copy.stat().st_mtime_ns + 10**9))
         await client.call_tool("hamta_nyckeltal", {"sie_fil": str(copy)})
         assert len(calls) == 4
+
+
+@pytest.mark.anyio
+async def test_screening_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    units = [scb_unit(1), scb_unit(2, lan="12"), scb_unit(3, jur="10")]
+    turnover = {"6": [u["peOrgNr"] for u in units]}
+    monkeypatch.setattr(server, "make_scb_client", lambda s: _fake_scb(units, turnover))
+    monkeypatch.setattr(server, "make_bolagsverket_client", lambda s: _fake_registry())
+    async with Client(server.mcp) as client:
+        screened = await client.call_tool(
+            "screena_bolag",
+            {"sni": ["62100"], "oms_kl": [6], "lan": ["1"], "mapp": str(tmp_path / "ll")},
+        )
+        assert not screened.is_error, _text(screened)
+        text = _text(screened)
+        assert "2 kandidater av 3 bolag" in text and "Saknas digitalt" in text
+        assert "Testbolag 1 AB" in text and (tmp_path / "ll" / "long_list.xlsx").exists()
+
+        report = await client.call_tool("hamta_bokslut", {"org_nr": "559900-0001"})
+        assert "Exempelbolaget AB" in _text(report) and "32 450,0" in _text(report)
+        assert "se-gen-base:Nettoomsattning" in _text(report)
+        missing = await client.call_tool("hamta_bokslut", {"org_nr": "5599000002"})
+        assert "Saknas digitalt" in _text(missing)
+        empty = await client.call_tool("screena_bolag", {"sni": []})
+        assert empty.is_error
