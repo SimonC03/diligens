@@ -468,3 +468,33 @@ def test_running_and_failed_jobs_stay_visible(tmp_path: Path, demo: Path) -> Non
                 break
             time.sleep(0.02)
         assert "1 körning pågår" not in client.get("/metod").text
+
+
+def test_app_command_listens_where_told(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Locally on 127.0.0.1 only; in a container on every interface, behind Docker's port."""
+    import socket
+
+    import uvicorn
+    from typer.testing import CliRunner
+
+    from diligens.cli import app as cli_app
+
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: calls.append(kw))
+    with socket.socket() as spare:
+        spare.bind(("127.0.0.1", 0))
+        port = spare.getsockname()[1]
+
+    local = CliRunner().invoke(cli_app, ["app", "--port", str(port), "--inte-oppna"])
+    assert local.exit_code == 0, local.output
+    container = CliRunner().invoke(
+        cli_app, ["app", "--port", str(port), "--host", "0.0.0.0", "--inte-oppna"]
+    )
+    assert container.exit_code == 0, container.output
+    assert [c["host"] for c in calls] == ["127.0.0.1", "0.0.0.0"]
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", port))
+        busy.listen()
+        taken = CliRunner().invoke(cli_app, ["app", "--port", str(port), "--inte-oppna"])
+    assert taken.exit_code == 1 and "används redan" in taken.output

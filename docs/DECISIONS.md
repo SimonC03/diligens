@@ -263,3 +263,10 @@ Format: `YYYY-MM-DD` decision, reason.
   for the app's own form posts, which the first version refused; the policy is now
   same-origin, so app addresses still never reach other sites. Refusals are a small UTF-8
   page.
+- 2026-10-17 Docker: one image runs the app (default), the CLI and the MCP server. The build
+  context is an allowlist, so keys, client data and outputs never reach the image; keys
+  come from `.env` at run time. Inside the container the app listens on 0.0.0.0
+  (`diligens app --host`), and compose publishes the port on the host's 127.0.0.1 only, so
+  the app stays local. The workspace and exports are mounted from `./data/private` and
+  `./output` and survive rebuilds. The image runs as an unprivileged user. Quotes around
+  key values are removed in Settings, since `docker run --env-file` passes them through.

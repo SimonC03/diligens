@@ -1,0 +1,9 @@
+# The build context is an allowlist: only what the image needs is sent to Docker.
+# Keys (.env), client data (data/private), outputs and local tooling never are.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+**/__pycache__
+**/*.pyc
