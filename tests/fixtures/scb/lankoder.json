@@ -1,0 +1,94 @@
+[
+ {
+  "kod": "00",
+  "klartext": "Län okänd"
+ },
+ {
+  "kod": "01",
+  "klartext": "Stockholm"
+ },
+ {
+  "kod": "03",
+  "klartext": "Uppsala"
+ },
+ {
+  "kod": "04",
+  "klartext": "Södermanland"
+ },
+ {
+  "kod": "05",
+  "klartext": "Östergötland"
+ },
+ {
+  "kod": "06",
+  "klartext": "Jönköping"
+ },
+ {
+  "kod": "07",
+  "klartext": "Kronoberg"
+ },
+ {
+  "kod": "08",
+  "klartext": "Kalmar"
+ },
+ {
+  "kod": "09",
+  "klartext": "Gotland"
+ },
+ {
+  "kod": "10",
+  "klartext": "Blekinge"
+ },
+ {
+  "kod": "12",
+  "klartext": "Skåne"
+ },
+ {
+  "kod": "13",
+  "klartext": "Halland"
+ },
+ {
+  "kod": "14",
+  "klartext": "Västra Götaland"
+ },
+ {
+  "kod": "17",
+  "klartext": "Värmland"
+ },
+ {
+  "kod": "18",
+  "klartext": "Örebro"
+ },
+ {
+  "kod": "19",
+  "klartext": "Västmanland"
+ },
+ {
+  "kod": "20",
+  "klartext": "Dalarna"
+ },
+ {
+  "kod": "21",
+  "klartext": "Gävleborg"
+ },
+ {
+  "kod": "22",
+  "klartext": "Västernorrland"
+ },
+ {
+  "kod": "23",
+  "klartext": "Jämtland"
+ },
+ {
+  "kod": "24",
+  "klartext": "Västerbotten"
+ },
+ {
+  "kod": "25",
+  "klartext": "Norrbotten"
+ },
+ {
+  "kod": "99",
+  "klartext": "Ej svenskt län"
+ }
+]

@@ -1,0 +1,54 @@
+[
+ {
+  "kod": 0,
+  "klartext": "< 1 tkr"
+ },
+ {
+  "kod": 1,
+  "klartext": "1 - 499 tkr"
+ },
+ {
+  "kod": 2,
+  "klartext": "500 - 999 tkr"
+ },
+ {
+  "kod": 3,
+  "klartext": "1 000 - 4 999 tkr"
+ },
+ {
+  "kod": 4,
+  "klartext": "5 000 - 9 999 tkr"
+ },
+ {
+  "kod": 5,
+  "klartext": "10 000 - 19 999 tkr"
+ },
+ {
+  "kod": 6,
+  "klartext": "20 000 - 49 999 tkr"
+ },
+ {
+  "kod": 7,
+  "klartext": "50 000 - 99 999 tkr"
+ },
+ {
+  "kod": 8,
+  "klartext": "100 000 - 499 999 tkr"
+ },
+ {
+  "kod": 9,
+  "klartext": "500 000 - 999 999 tkr"
+ },
+ {
+  "kod": 10,
+  "klartext": "1 000 000 - 4 999 999 tkr"
+ },
+ {
+  "kod": 11,
+  "klartext": "5 000 000 - 9 999 999 tkr"
+ },
+ {
+  "kod": 12,
+  "klartext": " > 9 999 999 tkr"
+ }
+]

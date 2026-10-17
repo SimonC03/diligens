@@ -6,9 +6,9 @@ says otherwise.
 
 import datetime as dt
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 # ---------------------------------------------------------------- ledger (sie/)
 
@@ -359,3 +359,54 @@ class AnalysisResult(BaseModel):
     def flags(self) -> list[Flag]:
         """Flags with EBITDA adjustments filled in."""
         return self.bridge.flags
+
+
+# ---------------------------------------------------------------- screening (sources/)
+
+
+class ScbUnit(BaseModel):
+    """A legal unit from SCB's business register, partial data. Codes as SCB sends them."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    pe_org_nr: str = Field(alias="peOrgNr", description="12 digits, SCB's key")
+    org_nr: str = Field(alias="orgNr", description="10 digits, as Bolagsverket uses it")
+    name: str = Field(alias="namn")
+    county: str = Field(alias="lanSate", description="lankoder")
+    municipality: str = Field(default="", alias="kommunSate")
+    employee_class: str = Field(alias="anstKl", description="anstklkoder")
+    status: str = Field(alias="ftgStat", description="ftgstatkoder, 1 = verksam")
+    legal_form: str = Field(alias="jurform", description="jurformkoder, 49 = aktiebolag")
+    primary_sni: str | None = Field(default=None, description="SNI 2025, rank 1")
+    post_town: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        primary = data.get("primarNaringsgren")
+        if primary is None:
+            ranked = sorted(data.get("naringsgrenar") or [], key=lambda n: n["rangordning"])
+            primary = ranked[0] if ranked else None
+        if primary and "primary_sni" not in data:
+            data["primary_sni"] = primary.get("naringsgren")
+        address = data.get("postAdress") or {}
+        data.setdefault("post_town", address.get("postOrt", ""))
+        return data
+
+
+class ScbUnitFull(ScbUnit):
+    turnover_class: str = Field(alias="omsKl", description="omsklkoder")
+    turnover_year: int = Field(alias="omsAr", description="year of the turnover figure, 0 if none")
+    sni_codes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _codes(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "sni_codes" not in data:
+            data = dict(data)
+            ranked = sorted(data.get("naringsgrenar") or [], key=lambda n: n["rangordning"])
+            data["sni_codes"] = [n["naringsgren"] for n in ranked]
+        return data
