@@ -59,13 +59,13 @@ Branch `m3-agent`. Modules: `agent/`, `scripts/eval_flags.py`.
 
 Branch `m4-export`. Modules: `export/excel.py`, `agent/memo.py`.
 
-- [ ] Sheets: Sammanfattning, RR månad, BR månad, EBITDA brygga, Rörelsekapital,
+- [x] Sheets: Sammanfattning, RR månad, BR månad, EBITDA brygga, Rörelsekapital,
       Nettoskuld, Flaggade poster, DD frågor, Avstämning, Källor
-- [ ] Real Excel formulas for totals and the EBITDA bridge, not hardcoded values
-- [ ] TSEK formatting, frozen headers, column widths, Swedish labels
-- [ ] Every flagged row shows voucher ref and account
-- [ ] Memo (markdown, Swedish, max one page) generated from computed numbers only
-- [ ] Test: workbook opens with openpyxl, expected sheets exist, formulas present
+- [x] Real Excel formulas for totals and the EBITDA bridge, not hardcoded values
+- [x] TSEK formatting, frozen headers, column widths, Swedish labels
+- [x] Every flagged row shows voucher ref and account
+- [x] Memo (markdown, Swedish, max one page) generated from computed numbers only
+- [x] Test: workbook opens with openpyxl, expected sheets exist, formulas present
 
 ## M5 MCP server
 

@@ -81,7 +81,7 @@ _REVIEW_NOTE = f"Kräver granskning, konfidens under {_THRESHOLD}."
 def _text(voucher: Voucher) -> str:
     """Voucher text without dates and numbers, so a monthly series reads as one item."""
     words = re.sub(r"[\d\-./:]+", " ", voucher.text).split()
-    return " ".join(words).strip(" ,")[:60]
+    return re.sub(r"\s+,", ",", " ".join(words)).strip(" ,")[:60]
 
 
 def _item(
