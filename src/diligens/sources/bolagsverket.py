@@ -8,6 +8,7 @@ production environment. Credentials and tokens are never put in messages or logs
 
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -54,25 +55,33 @@ def org_nr10(org_nr: str) -> str:
     return digits
 
 
-def _message(response: httpx.Response) -> str:
+def _message(response: httpx.Response, request_id: str | None = None) -> str:
+    """Swedish message with Bolagsverket's own `detail` (Swedish in their ApiError) and the
+    X-Request-Id we sent, which their support can trace."""
     status = response.status_code
     try:
         body = response.json()
-        detail = f"{body.get('title', '')} ({body.get('instance', '')})".strip()
+        detail = str(body.get("detail") or body.get("title") or "").strip().rstrip(".")
     except (ValueError, AttributeError):
         detail = ""
     if status == 429:
-        return "Bolagsverket begränsar antalet anrop just nu (status 429). Försök igen om en stund."
-    if status in (401, 403):
-        return (
+        text = "Bolagsverket begränsar antalet anrop just nu (status 429). Försök igen om en stund."
+    elif status in (401, 403):
+        text = (
             "Bolagsverket avvisade inloggningen. Kontrollera BOLAGSVERKET_CLIENT_ID och "
             "BOLAGSVERKET_CLIENT_SECRET i .env."
         )
-    if status == 404:
-        return f"Uppgiften hittades inte hos Bolagsverket {detail}."
-    if status >= 500:
-        return f"Bolagsverket svarar inte just nu (status {status}). Försök igen senare."
-    return f"Bolagsverket kunde inte besvara frågan, status {status} {detail}."
+    elif status == 404:
+        text = "Uppgiften hittades inte hos Bolagsverket."
+    elif status >= 500:
+        text = f"Bolagsverket svarar inte just nu (status {status}). Försök igen senare."
+    else:
+        text = f"Bolagsverket kunde inte besvara frågan (status {status})."
+    if detail:
+        text += f" Bolagsverket: {detail}."
+    if request_id:
+        text += f" Anrops-id {request_id}."
+    return text
 
 
 UNREACHABLE = "Kunde inte nå Bolagsverket. Kontrollera anslutningen."
@@ -168,16 +177,18 @@ class BolagsverketClient:
     ) -> httpx.Response:
         rejected: str | None = None
         response: httpx.Response | None = None
+        request_id = ""
         attempt = 0
         while attempt < MAX_ATTEMPTS:
             token = self._access_token(rejected)
             self._pace()
+            request_id = str(uuid.uuid4())  # one per call, so each attempt can be traced
             try:
                 response = self._http.request(
                     method,
                     f"{self._base_url}{path}",
                     json=json,
-                    headers={"Authorization": f"Bearer {token}"},
+                    headers={"Authorization": f"Bearer {token}", "X-Request-Id": request_id},
                 )
             except httpx.TransportError:
                 attempt += 1
@@ -199,9 +210,9 @@ class BolagsverketClient:
             break
         assert response is not None
         if response.status_code == 429 or response.status_code >= 500:
-            raise BolagsverketUnavailable(_message(response))
+            raise BolagsverketUnavailable(_message(response, request_id))
         if not response.is_success:
-            raise BolagsverketError(_message(response))
+            raise BolagsverketError(_message(response, request_id))
         return response
 
     def _json(self, response: httpx.Response) -> dict[str, Any]:

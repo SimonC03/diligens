@@ -205,19 +205,27 @@ def test_bolagsverket_client_tokens_documents_and_errors() -> None:
     ]
     client.documents("5599000001")
     assert server.tokens == 3
+    # The spec's own 400 example: Bolagsverket's Swedish detail and the request id we sent
+    # (X-Request-Id, for their support) both reach the advisor.
     server.fail_next = [
         httpx.Response(
             400,
             json={
-                "type": "urn:bolagsverket:error:validation",
-                "instance": "identitetsbeteckning",
+                "type": "about:blank",
+                "instance": "client.error",
                 "status": 400,
                 "title": "Bad Request",
+                "detail": "Identitetsbeteckning har ogiltig kontrollsiffra.",
             },
         )
     ]
-    with pytest.raises(BolagsverketError, match="Bolagsverket"):
+    with pytest.raises(BolagsverketError) as error:
         client.documents("5599000001")
+    request_id = server.requests[-1].headers["X-Request-Id"]
+    assert len(request_id) == 36  # a UUID
+    assert "Identitetsbeteckning har ogiltig kontrollsiffra" in str(error.value)
+    assert request_id in str(error.value)
+    assert "secret-not-real" not in str(error.value)
     with pytest.raises(BolagsverketError, match="10 siffror"):
         client.documents("123")
 
