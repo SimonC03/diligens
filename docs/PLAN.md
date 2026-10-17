@@ -75,7 +75,7 @@ Branch `m5-mcp`. Module: `mcp_server.py`.
       (and `screena_bolag`, `hamta_bokslut` after M6)
 - [x] Tool descriptions in Swedish, inputs validated, errors returned as readable text
 - [x] README has the MCP client config snippet and a manual test checklist
-- [ ] Manual check: from an MCP client, "Analysera demo_bolag.se och visa de största
+- [x] Manual check: from an MCP client, "Analysera demo_bolag.se och visa de största
       normaliseringsposterna" works end to end
 
 ## M6 Buy & Build screening (needs API keys)
