@@ -89,6 +89,10 @@ counted in net debt not NWC; 2350 to 2359 long term bank loans in net debt.
 - Bruttoresultat = Nettoomsättning minus (4000 to 4999)
 - EBITDA = rörelseresultat before 7700 to 7899, i.e. minus sum(3000 to 7699 and 7900 to 7999)
 - EBITDA marginal = EBITDA / Nettoomsättning
+- Justerad nettoomsättning = Nettoomsättning plus the part of each included bridge item
+  that sits on 3000 to 3699 (for example a periodisering of a sales invoice)
+- Justerad EBITDA marginal = Justerad EBITDA / Justerad nettoomsättning, so numerator and
+  denominator are adjusted consistently
 - EBIT = EBITDA minus (7700 to 7899)
 - LTM = sum of the last 12 months
 - Tillväxt = LTM vs the 12 months before

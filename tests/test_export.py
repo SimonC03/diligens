@@ -225,6 +225,13 @@ def _check_summary(wb: Workbook, result: AnalysisResult, basis: str) -> None:
         float(series["ebitda_marginal"].values[month])
     )
     assert value(f"Justerad EBITDA {basis}") == pytest.approx(float(bridge.adjusted) / 1000)
+    assert value(f"Justerad nettoomsättning {basis}") == pytest.approx(
+        float(bridge.adjusted_revenue) / 1000
+    )
+    if bridge.adjusted_revenue:
+        assert value(f"Justerad EBITDA-marginal {basis}") == pytest.approx(
+            float(bridge.adjusted / bridge.adjusted_revenue)
+        )
     assert value(f"Nettoskuld {kpis.net_debt_month}") == pytest.approx(float(kpis.net_debt) / 1000)
     assert value(f"Rörelsekapital {kpis.months[-1]}") == pytest.approx(
         float(kpis.nwc.values[kpis.months[-1]] or 0) / 1000

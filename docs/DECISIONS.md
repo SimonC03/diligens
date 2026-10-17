@@ -221,3 +221,9 @@ Format: `YYYY-MM-DD` decision, reason.
   flagging eval (five of six, 94 %) is in-sample on the synthetic demo company and is
   presented as such. Without AI the bridge has no adjustments, so the fallback for the
   Excel walkthrough is the pack built with AI the day before.
+- 2026-10-17 Justerad EBITDA-marginal is adjusted EBITDA over adjusted Nettoomsättning, so
+  numerator and denominator move together (DOMAIN.md section 4). Each bridge item carries
+  the part of its amount on 3000 to 3699; the bridge sheet shows it as "Varav
+  nettoomsättning TSEK" and computes Justerad nettoomsättning with the same Inkludera
+  switches as adjusted EBITDA. On the demo the periodisering of B473 lowers revenue by
+  600 TSEK, so the margin is 14,0 % rather than 13,8 % on reported revenue.

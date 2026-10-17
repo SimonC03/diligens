@@ -41,6 +41,12 @@ def is_ebitda_account(account: str) -> bool:
     return 3000 <= number <= 7699 or 7900 <= number <= 7999
 
 
+def is_revenue_account(account: str) -> bool:
+    """3000-3699: Nettoomsättning (DOMAIN.md section 4)."""
+    line = _line_for(account)
+    return line is not None and line[0] == "Nettoomsättning"
+
+
 def _line_for(account: str) -> tuple[str, StatementKind] | None:
     if not (len(account) == 4 and account.isdigit()):
         return None
