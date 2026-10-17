@@ -306,7 +306,8 @@ class EbitdaBridge(BaseModel):
 
 
 class DDQuestion(BaseModel):
-    text: str = Field(description="Swedish question to the seller")
+    text: str = Field(description="Swedish question to the seller, with the reference")
+    wording: str = Field(default="", description="the question alone, without the reference")
     voucher_refs: list[str] = Field(default_factory=list)
     accounts: list[str] = Field(default_factory=list)
     amount: Decimal | None = None

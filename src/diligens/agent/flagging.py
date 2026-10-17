@@ -66,7 +66,8 @@ Hitta inte på fakta som inte syns i underlaget.
 Svara med en flagga per verifikation i batchen, med samma ref som i underlaget.
 """
 
-_DASH = re.compile(r"\s[-–—]\s")
+# A dash between words, not a list marker at the start of a line.
+_DASH = re.compile(r"(?<=\S)[ \t][-–—][ \t]")
 
 
 class _LlmFlag(BaseModel):

@@ -6,12 +6,14 @@ items are positive when they increase net debt.
 
 from decimal import ROUND_HALF_UP, Decimal
 
+from diligens.analysis.mapping import BAS_LINES
 from diligens.analysis.statements import months_of
 from diligens.models import (
     Figure,
     FiscalYear,
     KPIs,
     KpiSeries,
+    Mapping,
     NetDebtItem,
     NetDebtKind,
     Statements,
@@ -217,6 +219,15 @@ def nwc_accounts(statements: Statements) -> list[str]:
         for a in statements.account_balances
         if _in(a, _NWC_RANGES) and not _in(a, _NWC_EXCLUDED_RANGES)
     ]
+
+
+def nwc_lines(statements: Statements, mapping: Mapping) -> list[tuple[str, list[str]]]:
+    """Working capital accounts grouped per balance sheet line, in BAS order."""
+    by_line: dict[str, list[str]] = {}
+    for account in nwc_accounts(statements):
+        by_line.setdefault(mapping.accounts[account].line, []).append(account)
+    order = [line for _, _, line, statement in BAS_LINES if statement == "BR"]
+    return [(line, sorted(by_line[line])) for line in order if line in by_line]
 
 
 def _nwc(statements: Statements) -> tuple[KpiSeries, Figure]:

@@ -1,5 +1,6 @@
 """M4 export tests. One test per acceptance criterion in docs/PLAN.md. No API calls."""
 
+import datetime as dt
 import json
 import re
 from pathlib import Path
@@ -13,13 +14,15 @@ from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 from typer.testing import CliRunner
 
-from diligens.agent.memo import memo_facts, write_memo
+from diligens.agent.memo import _template, memo_facts, write_memo
 from diligens.cli import app
 from diligens.config import Settings
 from diligens.export.excel import SHEETS, export_dd_pack
 from diligens.models import AnalysisResult, Facit
 from diligens.pipeline import run_analysis
 from diligens.sie.generator import generate_demo_company
+from diligens.sie.parser import parse_sie
+from diligens.sie.writer import write_sie
 
 # Category and confidence per planted anomaly, as a model might answer. The owner fee comes
 # back as related party (a candidate, not adjusted) and the car below the threshold.
@@ -174,8 +177,66 @@ def test_totals_and_bridge_are_live_formulas(analysed: tuple[AnalysisResult, Pat
     assert ev.value(debt.title, total.coordinate) == pytest.approx(float(kpis.net_debt) / thousand)
 
     summary = wb["Sammanfattning"]
-    linked = summary.cell(row=_row_of(summary, "Justerad EBITDA"), column=2)
+    linked = summary.cell(row=_row_of(summary, "Justerad EBITDA LTM"), column=2)
     assert "'EBITDA brygga'!" in linked.value
+
+    # Every formula in the workbook computes, and the summary agrees with Python.
+    fresh = _wb(path)
+    _check_summary(fresh, result, "LTM")
+
+    # A short export (nine months) uses year to date and still computes everywhere.
+    short_folder = path.parent / "short"
+    full = parse_sie(path.parent.parent / "demo_bolag.se")
+    cut = full.model_copy(
+        update={
+            "vouchers": [
+                v for v in full.vouchers if dt.date(2025, 1, 1) <= v.date <= dt.date(2025, 9, 30)
+            ]
+        }
+    )
+    sie = short_folder / "short.se"
+    short_folder.mkdir(exist_ok=True)
+    write_sie(cut, sie)
+    short = run_analysis(sie, use_llm=False)
+    assert short.bridge.basis == "YTD"
+    _check_summary(_wb(export_dd_pack(short, short_folder)), short, "hittills i år")
+
+
+def _check_summary(wb: Workbook, result: AnalysisResult, basis: str) -> None:
+    ev = FormulaEvaluator(wb)
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    ev.value(ws.title, cell.coordinate)  # raises on anything it cannot compute
+    summary = wb["Sammanfattning"]
+    kpis, bridge = result.kpis, result.bridge
+    month = bridge.month
+    series = kpis.ltm if bridge.basis == "LTM" else kpis.ytd
+
+    def value(label: str) -> Any:
+        return ev.value(
+            "Sammanfattning", summary.cell(row=_row_of(summary, label), column=2).coordinate
+        )
+
+    assert value(f"EBITDA {basis}") == pytest.approx(float(series["ebitda"].values[month]) / 1000)
+    assert value(f"EBITDA-marginal {basis}") == pytest.approx(
+        float(series["ebitda_marginal"].values[month])
+    )
+    assert value(f"Justerad EBITDA {basis}") == pytest.approx(float(bridge.adjusted) / 1000)
+    assert value(f"Nettoskuld {kpis.net_debt_month}") == pytest.approx(float(kpis.net_debt) / 1000)
+    assert value(f"Rörelsekapital {kpis.months[-1]}") == pytest.approx(
+        float(kpis.nwc.values[kpis.months[-1]] or 0) / 1000
+    )
+    growth = kpis.ltm["tillvaxt"].values.get(kpis.months[-1])
+    if growth is not None:
+        assert value("Tillväxt LTM") == pytest.approx(float(growth))
+    status = wb["Avstämning"]
+    status_cell = status.cell(row=_row_of(status, "Status"), column=2)
+    assert ev.value("Avstämning", status_cell.coordinate) == (
+        "OK" if result.reconciliation.ok else "AVVIKER"
+    )
+    assert wb.calculation.fullCalcOnLoad
 
 
 def test_tsek_format_frozen_headers_and_swedish_labels(
@@ -248,6 +309,20 @@ def test_cli_writes_workbook_that_opens_with_formulas(tmp_path: Path) -> None:
     )
     assert formulas > 100
 
+    # A workbook that cannot be written (open in Excel) gives a readable error, not a crash.
+    def locked(*args: Any, **kwargs: Any) -> Path:
+        raise PermissionError(13, "Permission denied")
+
+    import diligens.cli
+
+    original = diligens.cli.export_dd_pack
+    diligens.cli.export_dd_pack = locked  # type: ignore[assignment]
+    try:
+        blocked = CliRunner().invoke(app, ["analyze", str(sie), "--out", str(out), "--no-llm"])
+    finally:
+        diligens.cli.export_dd_pack = original
+    assert blocked.exit_code == 1 and "Stäng filen i Excel" in blocked.output
+
 
 _NUMBER = re.compile(r"\d[\d\s]*(?:,\d+)?")
 
@@ -304,6 +379,22 @@ def test_memo_uses_computed_numbers_only(analysed: tuple[AnalysisResult, Path]) 
     for heading in ("## Sammanfattning", "## Normaliseringar", "## Frågor till säljaren"):
         assert heading in template
     assert result.memo  # the pipeline fills it in
+
+    # Bullet lists with prose are fine; only a dash between words is punctuation.
+    bullets = (
+        "## Sammanfattning\n\nEBITDA uppgår till {ebitda}.\n\n"
+        "- Justeringen gäller främst {post_1}\n- Den andra posten är {post_2}"
+    )
+    prose = MemoMessages([bullets])
+    write_memo(result, cast(Anthropic, SimpleNamespace(messages=prose)), model="x")
+    assert len(prose.calls) == 1
+    dashed = MemoMessages(["## Sammanfattning\n\nEBITDA är {ebitda} - en stark nivå."])
+    write_memo(result, cast(Anthropic, SimpleNamespace(messages=dashed)), model="x")
+    assert len(dashed.calls) == 3
+
+    # A fact the data does not allow (no margin without revenue) never breaks the template.
+    facts = {k: v for k, v in memo_facts(result).items() if k != "ebitda_marginal"}
+    assert "uppgift saknas" not in _template(facts) and "{" not in _template(facts)
 
 
 @pytest.mark.live

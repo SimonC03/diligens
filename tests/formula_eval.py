@@ -10,7 +10,9 @@ from openpyxl.workbook.workbook import Workbook
 
 _TOKEN = re.compile(
     r"\s*(?:"
-    r"(?P<number>\d+(?:\.\d+)?)"
+    r"(?P<string>\"[^\"]*\")"
+    r"|(?P<cmp><>|<=|>=|=|<|>)"
+    r"|(?P<number>\d+(?:\.\d+)?)"
     r"|(?P<ref>(?:'(?P<qsheet>[^']+)'!|(?P<sheet>[A-Za-z_][\w]*)!)?"
     r"\$?(?P<col>[A-Z]{1,3})\$?(?P<row>\d+)(?::\$?(?P<col2>[A-Z]{1,3})\$?(?P<row2>\d+))?)"
     r"|(?P<func>[A-Z]+)\("
@@ -19,16 +21,21 @@ _TOKEN = re.compile(
 )
 
 
+_DIV0 = object()  # marker for a division by zero inside a function argument
+
+
 class FormulaEvaluator:
     def __init__(self, workbook: Workbook) -> None:
         self.wb = workbook
 
-    def value(self, sheet: str, cell: str) -> float:
+    def value(self, sheet: str, cell: str) -> Any:
         raw = self.wb[sheet][cell].value
         if isinstance(raw, str) and raw.startswith("="):
             return self._evaluate(raw[1:], sheet)
         if raw is None or raw == "":
             return 0.0
+        if isinstance(raw, str):
+            return raw
         return float(raw)
 
     def _tokens(self, text: str) -> list[tuple[str, Any]]:
@@ -39,7 +46,11 @@ class FormulaEvaluator:
             if not m or m.end() == pos:
                 raise ValueError(f"cannot parse {text[pos:]!r}")
             pos = m.end()
-            if m.group("number"):
+            if m.group("string") is not None:
+                out.append(("str", m.group("string")[1:-1]))
+            elif m.group("cmp"):
+                out.append(("cmp", m.group("cmp")))
+            elif m.group("number"):
                 out.append(("num", float(m.group("number"))))
             elif m.group("ref"):
                 out.append(("ref", m.groupdict()))
@@ -58,6 +69,22 @@ class FormulaEvaluator:
             raise ValueError(f"range used as a value in {text!r}")
         return result
 
+    @staticmethod
+    def _skip(tokens: list[tuple[str, Any]], pos: int) -> int:
+        """Position of the comma or closing parenthesis that ends the argument at `pos`."""
+        depth = 0
+        while True:
+            kind, payload = tokens[pos]
+            if kind == "func" or (kind == "op" and payload == "("):
+                depth += 1
+            elif kind == "op" and payload == ")":
+                if depth == 0:
+                    return pos
+                depth -= 1
+            elif kind == "op" and payload == "," and depth == 0:
+                return pos
+            pos += 1
+
     def _cells(self, ref: dict[str, Any], sheet: str) -> list[float]:
         target = ref["qsheet"] or ref["sheet"] or sheet
         c1, r1 = column_index_from_string(ref["col"]), int(ref["row"])
@@ -70,6 +97,22 @@ class FormulaEvaluator:
         ]
 
     def _expr(self, tokens: list[tuple[str, Any]], pos: int, sheet: str) -> tuple[Any, int]:
+        value, pos = self._sum(tokens, pos, sheet)
+        if pos < len(tokens) and tokens[pos][0] == "cmp":
+            op = tokens[pos][1]
+            right, pos = self._sum(tokens, pos + 1, sheet)
+            checks = {
+                "=": value == right,
+                "<>": value != right,
+                "<": value < right,
+                ">": value > right,
+                "<=": value <= right,
+                ">=": value >= right,
+            }
+            return checks[op], pos
+        return value, pos
+
+    def _sum(self, tokens: list[tuple[str, Any]], pos: int, sheet: str) -> tuple[Any, int]:
         value, pos = self._term(tokens, pos, sheet)
         while pos < len(tokens) and tokens[pos] in (("op", "+"), ("op", "-")):
             op = tokens[pos][1]
@@ -93,7 +136,7 @@ class FormulaEvaluator:
         if kind == "op" and payload == "(":
             value, pos = self._expr(tokens, pos + 1, sheet)
             return value, pos + 1  # closing parenthesis
-        if kind == "num":
+        if kind in ("num", "str"):
             return payload, pos + 1
         if kind == "ref":
             cells = self._cells(payload, sheet)
@@ -102,11 +145,23 @@ class FormulaEvaluator:
             args: list[Any] = []
             pos += 1
             while tokens[pos] != ("op", ")"):
-                arg, pos = self._expr(tokens, pos, sheet)
+                start = pos
+                try:
+                    arg, pos = self._expr(tokens, pos, sheet)
+                except ZeroDivisionError:
+                    arg, pos = _DIV0, self._skip(tokens, start)
                 args.append(arg)
                 if tokens[pos] == ("op", ","):
                     pos += 1
             pos += 1
+            if payload == "IFERROR":
+                return (args[1] if args[0] is _DIV0 else args[0]), pos
+            if any(a is _DIV0 for a in args):
+                raise ZeroDivisionError
+            if payload == "IF":
+                return (args[1] if args[0] else args[2]), pos
+            if payload == "ABS":
+                return abs(args[0]), pos
             flat = [x for a in args for x in (a if isinstance(a, list) else [a])]
             if payload == "SUM":
                 return sum(flat), pos

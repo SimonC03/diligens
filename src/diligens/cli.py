@@ -73,9 +73,17 @@ def analyze(
         typer.secho(f"AI-fel: {exc}", fg="red", err=True)
         raise typer.Exit(code=EXIT_ERROR) from exc
     _print_summary(result)
-    workbook = export_dd_pack(result, out)
     memo = out / "memo.md"
-    memo.write_text(result.memo, encoding="utf-8")
+    try:
+        workbook = export_dd_pack(result, out)
+        memo.write_text(result.memo, encoding="utf-8")
+    except OSError as exc:
+        typer.secho(
+            f"Fel: kan inte skriva till {out} ({exc.strerror}). Stäng filen i Excel och kör igen.",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(code=EXIT_ERROR) from exc
     typer.secho("\nUnderlag", bold=True)
     typer.echo(f"  {workbook}")
     typer.echo(f"  {memo}")

@@ -16,10 +16,10 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from diligens.analysis.kpis import nwc_accounts
+from diligens.analysis.kpis import nwc_lines
 from diligens.analysis.mapping import BAS_LINES
 from diligens.analysis.statements import COMPUTED_RESULT
-from diligens.models import AnalysisResult, BridgeItem, Flag, FlagCategory
+from diligens.models import REVIEW_CONFIDENCE, AnalysisResult, BridgeItem, FlagCategory
 
 SHEETS = [
     "Sammanfattning",
@@ -47,6 +47,9 @@ CATEGORY_LABELS: dict[FlagCategory, str] = {
     "periodisering": "Periodisering",
     "avvikelse": "Avvikelse",
     "normal": "Normal",
+}
+NWC_LABELS = {
+    "Leverantörsskulder och kortfristiga skulder till kreditinstitut": "Leverantörsskulder",
 }
 STATUS_ORDER = ["Justerad", "Kräver granskning", "Ej justerad, fråga", "Utanför perioden", "Normal"]
 
@@ -78,7 +81,8 @@ RR_LAYOUT: list[tuple[str, list[str] | None]] = [
     ("Finansiella poster", None),
     ("Bokslutsdispositioner", None),
     ("Resultat före skatt", ["EBIT", "Finansiella poster", "Bokslutsdispositioner"]),
-    ("Skatt och årets resultat", None),
+    ("Skatt", None),
+    ("Årets resultat", ["Resultat före skatt", "Skatt"]),
 ]
 
 
@@ -137,16 +141,29 @@ def _income_statement(ws: Worksheet, result: AnalysisResult) -> tuple[dict[str, 
     last = months.index(bridge.period[1]) + 2
     period_col = len(months) + 2
     lines = {line.line: line for line in result.statements.income}
+    # Tax only (8900-8989): the closing entry on 8990-8999 moves the result to equity and
+    # would read as a tax charge.
+    tax_accounts = [a for a in result.statements.account_movements if 8900 <= int(a) <= 8989]
+    tax = {
+        m: sum((result.statements.account_movements[a][m] for a in tax_accounts), Decimal(0))
+        for m in months
+    }
+    sources = {label: line.source_ref for label, line in lines.items()}
+    sources["Skatt"] = (
+        "SIE #TRANS per verifikationsdatum, konton 8900–8989. Bokslutets årets resultat "
+        "(8990–8999) visas inte."
+    )
 
     rows: dict[str, int] = {}
     for label, parts in RR_LAYOUT:
         row = ws.max_row + 1
         rows[label] = row
         ws.cell(row=row, column=1, value=label)
+        values = tax if label == "Skatt" else (lines[label].values if parts is None else {})
         for i, month in enumerate(months, start=2):
             letter = _col(i)
             if parts is None:
-                ws.cell(row=row, column=i, value=_tsek(-lines[label].values[month]))
+                ws.cell(row=row, column=i, value=_tsek(-values[month]))
             else:
                 ws.cell(
                     row=row, column=i, value="=" + "+".join(f"{letter}{rows[p]}" for p in parts)
@@ -156,7 +173,7 @@ def _income_statement(ws: Worksheet, result: AnalysisResult) -> tuple[dict[str, 
             column=period_col,
             value=f"=SUM({_col(first)}{row}:{_col(last)}{row})",
         )
-        source = lines[label].source_ref if parts is None else "Formel: " + " + ".join(parts)
+        source = sources[label] if parts is None else "Formel: " + " + ".join(parts)
         ws.cell(row=row, column=period_col + 1, value=source)
         if parts is not None:
             _bold(ws, row)
@@ -278,18 +295,12 @@ def _working_capital(ws: Worksheet, result: AnalysisResult) -> tuple[int, int | 
     months = result.statements.months
     _header(ws, ["Rad", *months, "Källa"])
     source_col = len(months) + 2
-    accounts = nwc_accounts(result.statements)
-    order = [line for _, _, line, statement in BAS_LINES if statement == "BR"]
-    by_line: dict[str, list[str]] = {}
-    for account in accounts:
-        by_line.setdefault(result.mapping.accounts[account].line, []).append(account)
 
     rows = []
-    for line in [line for line in order if line in by_line]:
-        members = sorted(by_line[line])
+    for line, members in nwc_lines(result.statements, result.mapping):
         row = ws.max_row + 1
         rows.append(row)
-        ws.cell(row=row, column=1, value=line)
+        ws.cell(row=row, column=1, value=NWC_LABELS.get(line, line))
         for i, month in enumerate(months, start=2):
             value = sum((result.statements.account_balances[a][month] for a in members), Decimal(0))
             ws.cell(row=row, column=i, value=_tsek(value))
@@ -301,7 +312,8 @@ def _working_capital(ws: Worksheet, result: AnalysisResult) -> tuple[int, int | 
     nwc = ws.max_row + 1
     ws.cell(row=nwc, column=1, value="Rörelsekapital")
     for i in range(2, source_col):
-        ws.cell(row=nwc, column=i, value=f"=SUM({_col(i)}{rows[0]}:{_col(i)}{rows[-1]})")
+        total = f"=SUM({_col(i)}{rows[0]}:{_col(i)}{rows[-1]})" if rows else 0
+        ws.cell(row=nwc, column=i, value=total)
     ws.cell(row=nwc, column=source_col, value=result.kpis.nwc.source_ref)
     _bold(ws, nwc)
 
@@ -341,7 +353,14 @@ def _net_debt(ws: Worksheet, result: AnalysisResult) -> int:
     _bold(ws, total)
     if kpis.debt_like_items:
         ws.append([])
-        ws.append(["Att bedöma, ingår inte i nettoskulden", None, None, None])
+        ws.append(
+            [
+                "Att bedöma, ingår inte i nettoskulden",
+                None,
+                None,
+                "Positivt belopp är en skuld, negativt en fordran",
+            ]
+        )
         _bold(ws, ws.max_row)
         for item in kpis.debt_like_items:
             ws.append([item.label, ", ".join(item.accounts), _tsek(item.amount), item.source_ref])
@@ -351,18 +370,18 @@ def _net_debt(ws: Worksheet, result: AnalysisResult) -> int:
     return total
 
 
-def _status(flag: Flag, result: AnalysisResult) -> str:
+def _statuses(result: AnalysisResult) -> dict[str, str]:
+    """Voucher ref to its status in the bridge; anything not listed is Normal."""
     bridge = result.bridge
-    adjusted = {r for item in bridge.items for r in item.voucher_refs}
-    if flag.voucher_ref in adjusted:
-        return "Justerad"
-    if flag.voucher_ref in {f.voucher_ref for f in bridge.review}:
-        return "Kräver granskning"
-    if flag.voucher_ref in {f.voucher_ref for f in bridge.not_adjusted}:
-        return "Ej justerad, fråga"
-    if flag.voucher_ref in {f.voucher_ref for f in bridge.outside_period}:
-        return "Utanför perioden"
-    return "Normal"
+    status: dict[str, str] = {}
+    for flags, label in (
+        (bridge.outside_period, "Utanför perioden"),
+        (bridge.not_adjusted, "Ej justerad, fråga"),
+        (bridge.review, "Kräver granskning"),
+    ):
+        status.update({f.voucher_ref: label for f in flags})
+    status.update({r: "Justerad" for item in bridge.items for r in item.voucher_refs})
+    return status
 
 
 def _flagged(ws: Worksheet, result: AnalysisResult) -> None:
@@ -372,7 +391,7 @@ def _flagged(ws: Worksheet, result: AnalysisResult) -> None:
         "Konto",
         "Kontonamn",
         "Text",
-        "Belopp TSEK",
+        "Belopp i resultatet TSEK",
         "EBITDA-justering TSEK",
         "Kategori",
         "Konfidens",
@@ -383,8 +402,9 @@ def _flagged(ws: Worksheet, result: AnalysisResult) -> None:
     ]
     _header(ws, header)
     reasons = {h.voucher_ref: "; ".join(h.reasons) for h in result.prefilter_hits}
+    statuses = _statuses(result)
     rows = sorted(
-        ((flag, _status(flag, result)) for flag in result.flags),
+        ((flag, statuses.get(flag.voucher_ref, "Normal")) for flag in result.flags),
         key=lambda fs: (STATUS_ORDER.index(fs[1]), -abs(fs[0].amount)),
     )
     for flag, status in rows:
@@ -414,7 +434,7 @@ def _flagged(ws: Worksheet, result: AnalysisResult) -> None:
 
 
 def _questions(ws: Worksheet, result: AnalysisResult) -> None:
-    _header(ws, ["Nr", "Fråga", "Konto", "Verifikat", "Belopp TSEK", "Källa"])
+    _header(ws, ["Nr", "Fråga", "Konto", "Verifikat", "Belopp i resultatet TSEK", "Källa"])
     for i, q in enumerate(result.questions, start=1):
         ws.append(
             [
@@ -422,8 +442,8 @@ def _questions(ws: Worksheet, result: AnalysisResult) -> None:
                 q.text,
                 ", ".join(q.accounts),
                 _refs(q.voucher_refs),
-                _tsek(abs(q.amount)) if q.amount is not None else None,
-                "Flaggade poster, nettoeffekt på EBITDA-konton för verifikaten",
+                _tsek(-q.amount) if q.amount is not None else None,
+                "Flaggade poster, verifikatens EBITDA-konton (intäkt positiv, kostnad negativ)",
             ]
         )
         ws.cell(row=ws.max_row, column=2).alignment = Alignment(wrap_text=True, vertical="top")
@@ -432,7 +452,8 @@ def _questions(ws: Worksheet, result: AnalysisResult) -> None:
     _widths(ws, {1: 6, 2: 90, 4: 40, 6: 45})
 
 
-def _reconciliation(ws: Worksheet, result: AnalysisResult) -> None:
+def _reconciliation(ws: Worksheet, result: AnalysisResult) -> int:
+    """Write Avstämning; return the row of the status cell."""
     rec = result.reconciliation
     years = {fy.index: f"{fy.start} till {fy.end}" for fy in result.statements.fiscal_years}
     _header(
@@ -444,6 +465,7 @@ def _reconciliation(ws: Worksheet, result: AnalysisResult) -> None:
             "Beräknat SEK",
             "Enligt fil SEK",
             "Differens SEK",
+            "Absolut differens SEK",
             "Källa",
         ],
     )
@@ -457,38 +479,58 @@ def _reconciliation(ws: Worksheet, result: AnalysisResult) -> None:
                 r.computed,
                 r.stated,
                 f"=D{row}-E{row}",
+                f"=ABS(F{row})",
                 f"Månadsrapporter mot SIE #{r.against} {r.year_index}, konto {r.account}",
             ]
         )
     end = ws.max_row
-    _format(ws, [4, 5, 6], range(2, end + 1), SEK)
-    ws.append([])
-    ws.append(["Status", "OK" if rec.ok else "AVVIKER", None, None, None, None, "Avstämningen"])
-    _bold(ws, ws.max_row)
-    ws.append(
-        [
-            "Omappade konton",
-            ", ".join(rec.unmapped_accounts) or "inga",
-            None,
-            None,
-            None,
-            None,
-            "BAS-mappning, DOMAIN.md avsnitt 2",
-        ]
+    # Fixed positions below the table, one blank row in between. (Appending an empty row
+    # does not advance openpyxl's max_row, so rows are addressed explicitly.)
+    total, status, unmapped, outside = end + 2, end + 3, end + 4, end + 5
+
+    def put(row: int, cells: dict[int, Any]) -> None:
+        for column, value in cells.items():
+            ws.cell(row=row, column=column, value=value)
+
+    put(
+        total,
+        {
+            1: "Summa absolut differens",
+            7: f"=SUM(G2:G{end})" if end >= 2 else 0,
+            8: "Formel: summa av absoluta differenser",
+        },
     )
-    ws.append(
-        [
-            "Verifikat utanför räkenskapsåren",
-            ", ".join(rec.vouchers_outside_years) or "inga",
-            None,
-            None,
-            None,
-            None,
-            "SIE #VER mot #RAR",
-        ]
+    put(
+        status,
+        {
+            1: "Status",
+            2: f'=IF(G{total}+C{unmapped}+C{outside}=0,"OK","AVVIKER")',
+            8: "Formel: OK när differenserna är 0 och inget konto eller verifikat faller utanför",
+        },
     )
+    put(
+        unmapped,
+        {
+            1: "Omappade konton",
+            2: ", ".join(rec.unmapped_accounts) or "inga",
+            3: len(rec.unmapped_accounts),
+            8: "Konton utanför BAS-intervallen, antal i kolumn C",
+        },
+    )
+    put(
+        outside,
+        {
+            1: "Verifikat utanför räkenskapsåren",
+            2: ", ".join(rec.vouchers_outside_years) or "inga",
+            3: len(rec.vouchers_outside_years),
+            8: "SIE #VER jämfört med #RAR, antal i kolumn C",
+        },
+    )
+    _bold(ws, status)
+    _format(ws, [4, 5, 6, 7], range(2, total + 1), SEK)
     ws.freeze_panes = "A2"
-    _widths(ws, {7: 60})
+    _widths(ws, {8: 60})
+    return status
 
 
 def _summary(
@@ -501,103 +543,126 @@ def _summary(
     net_debt_row: int,
 ) -> None:
     kpis, bridge = result.kpis, result.bridge
-    label = "LTM" if bridge.basis == "LTM" else "hittills i år"
+    basis = "LTM" if bridge.basis == "LTM" else "hittills i år"
     months = result.statements.months
     last_col = _col(len(months) + 1)
     _header(ws, ["Uppgift", "Värde", "Källa"])
-    rows: list[tuple[str, Any, str, str | None]] = [
-        ("Bolag", result.company_name, "SIE #FNAMN", None),
-        ("Organisationsnummer", result.org_nr, "SIE #ORGNR", None),
-        ("Källfil", result.source, "SIE4-fil", None),
-        ("Analyserad period", f"{months[0]} till {months[-1]}", "Verifikationsdatum", None),
-        (
-            "AI-stöd",
-            result.model or "Av (--no-llm), flaggor kräver granskning",
-            "DILIGENS_MODEL",
-            None,
-        ),
-        (
-            f"Nettoomsättning {label}",
-            f"='RR månad'!{period_col}{rr_rows['Nettoomsättning']}",
-            "RR månad",
-            TSEK,
-        ),
-        (f"EBITDA {label}", f"='RR månad'!{period_col}{rr_rows['EBITDA']}", "RR månad", TSEK),
-        (f"EBITDA-marginal {label}", "=B8/B7", "Formel: EBITDA delat med nettoomsättning", PERCENT),
-        ("Justerad EBITDA", f"='EBITDA brygga'!E{adjusted_row}", "EBITDA brygga", TSEK),
-    ]
+    # Rows are appended in order; formulas refer to earlier rows through `at`.
+    at: dict[str, int] = {}
+
+    def add(key: str, label: str, value: Any, source: str, number_format: str | None) -> None:
+        ws.append([label, value, source])
+        at[key] = ws.max_row
+        if number_format:
+            ws.cell(row=ws.max_row, column=2).number_format = number_format
+
+    add("bolag", "Bolag", result.company_name, "SIE #FNAMN", None)
+    add("orgnr", "Organisationsnummer", result.org_nr, "SIE #ORGNR", None)
+    add("fil", "Källfil", result.source, "SIE4-fil", None)
+    add("period", "Analyserad period", f"{months[0]} till {months[-1]}", "Verifikationsdatum", None)
+    add(
+        "ai",
+        "AI-stöd",
+        result.model or "Av (--no-llm), flaggor kräver granskning",
+        "DILIGENS_MODEL",
+        None,
+    )
+    rr = "'RR månad'!"
+    add(
+        "oms",
+        f"Nettoomsättning {basis}",
+        f"={rr}{period_col}{rr_rows['Nettoomsättning']}",
+        "RR månad",
+        TSEK,
+    )
+    add("ebitda", f"EBITDA {basis}", f"={rr}{period_col}{rr_rows['EBITDA']}", "RR månad", TSEK)
+    add(
+        "marginal",
+        f"EBITDA-marginal {basis}",
+        f'=IFERROR(B{at["ebitda"]}/B{at["oms"]},"")',
+        "Formel: EBITDA delat med nettoomsättning",
+        PERCENT,
+    )
+    add(
+        "justerad",
+        f"Justerad EBITDA {basis}",
+        f"='EBITDA brygga'!E{adjusted_row}",
+        "EBITDA brygga, med valda Inkludera",
+        TSEK,
+    )
+    add(
+        "justerad_marginal",
+        f"Justerad EBITDA-marginal {basis}",
+        f'=IFERROR(B{at["justerad"]}/B{at["oms"]},"")',
+        "Formel: justerad EBITDA delat med nettoomsättning",
+        PERCENT,
+    )
     if len(months) >= 24:
         n = len(months) + 1
         revenue = rr_rows["Nettoomsättning"]
-        rows.append(
-            (
-                "Tillväxt LTM",
-                f"=SUM('RR månad'!{_col(n - 11)}{revenue}:{_col(n)}{revenue})"
-                f"/SUM('RR månad'!{_col(n - 23)}{revenue}:{_col(n - 12)}{revenue})-1",
-                "Formel: LTM mot LTM tolv månader tidigare",
-                PERCENT,
-            )
+        add(
+            "tillvaxt",
+            "Tillväxt LTM",
+            f"=IFERROR(SUM({rr}{_col(n - 11)}{revenue}:{_col(n)}{revenue})"
+            f'/SUM({rr}{_col(n - 23)}{revenue}:{_col(n - 12)}{revenue})-1,"")',
+            "Formel: LTM mot LTM tolv månader tidigare",
+            PERCENT,
         )
-    rows += [
-        (
-            f"Rörelsekapital {months[-1]}",
-            f"='Rörelsekapital'!{last_col}{nwc[0]}",
-            "Rörelsekapital",
-            TSEK,
-        ),
-    ]
+    add(
+        "nwc",
+        f"Rörelsekapital {months[-1]}",
+        f"='Rörelsekapital'!{last_col}{nwc[0]}",
+        "Rörelsekapital",
+        TSEK,
+    )
     if nwc[1] is not None:
-        rows.append(
-            (
-                "Rörelsekapital normalnivå",
-                f"='Rörelsekapital'!{last_col}{nwc[1]}",
-                "Rörelsekapital, snitt 12 månader",
-                TSEK,
-            )
-        )
-    rows += [
-        (
-            f"Nettoskuld {kpis.net_debt_month}",
-            f"='Nettoskuld'!C{net_debt_row}",
-            "Nettoskuld, negativt värde är nettokassa",
+        add(
+            "nwc_normal",
+            "Rörelsekapital normalnivå",
+            f"='Rörelsekapital'!{last_col}{nwc[1]}",
+            "Rörelsekapital, snitt 12 månader",
             TSEK,
-        ),
-        (
-            "Avstämning",
-            "OK" if result.reconciliation.ok else "AVVIKER",
-            "Avstämning mot #RES och #UB",
-            None,
-        ),
-        ("Flaggade poster", len(result.flags), "Flaggade poster", None),
-        ("Kräver granskning", len(bridge.review), "Flaggade poster, status", None),
-        ("DD-frågor", len(result.questions), "DD frågor", None),
-    ]
-    for name, value, source, number_format in rows:
-        ws.append([name, value, source])
-        if number_format:
-            ws.cell(row=ws.max_row, column=2).number_format = number_format
+        )
+    add(
+        "nettoskuld",
+        f"Nettoskuld {kpis.net_debt_month}",
+        f"='Nettoskuld'!C{net_debt_row}",
+        "Nettoskuld, negativt värde är nettokassa",
+        TSEK,
+    )
+    add(
+        "avstamning",
+        "Avstämning",
+        "OK" if result.reconciliation.ok else "AVVIKER",
+        "Avstämning mot SIE #RES och #UB, omappade konton och verifikat utanför åren",
+        None,
+    )
+    add("flaggor", "Flaggade poster", len(result.flags), "Flaggade poster", None)
+    add("granskning", "Kräver granskning", len(bridge.review), "Flaggade poster, status", None)
+    add("fragor", "DD-frågor", len(result.questions), "DD frågor", None)
     ws.freeze_panes = "A2"
-    _widths(ws, {1: 32, 2: 40, 3: 50})
+    _widths(ws, {1: 34, 2: 40, 3: 60})
 
 
 def _sources(ws: Worksheet, result: AnalysisResult) -> None:
+    threshold = f"{REVIEW_CONFIDENCE:.1f}".replace(".", ",")
     _header(ws, ["Uppgift", "Värde", "Källa"])
     rows = [
-        ("Källfil", result.source, "SIE4, CP437"),
+        ("Källfil", result.source, "SIE4-fil från bolagets bokföring"),
         ("Bolag", f"{result.company_name} ({result.org_nr})", "SIE #FNAMN och #ORGNR"),
         ("Genererad", dt.date.today().isoformat(), "Diligens"),
-        ("AI-modell", result.model or "ingen (--no-llm)", "DILIGENS_MODEL"),
-        ("Belopp", "TSEK, beräknade i kronor och delade med 1 000", "Kod, inte AI"),
+        ("AI-modell", result.model or "ingen (--no-llm)", "Inställning DILIGENS_MODEL"),
+        ("Belopp", "TSEK, beräknade i kronor och delade med 1 000", "Beräknat i kod"),
         (
             "Tecken",
             "RR: intäkter positiva, kostnader negativa. BR: tillgångar, eget kapital och "
-            "skulder positiva.",
-            "DOMAIN.md avsnitt 3",
+            "skulder positiva. Rörelsekapital: tillgångar positiva, skulder negativa.",
+            "Presentationsregel",
         ),
         (
             "Konfidensgräns",
-            "Flaggor under 0,7 justerar inte EBITDA och listas som Kräver granskning",
-            "DECISIONS.md",
+            f"Flaggor under {threshold} justerar inte EBITDA och listas som Kräver granskning",
+            "Bedömningsregel",
         ),
         (
             "Siffror",
@@ -614,7 +679,7 @@ def _sources(ws: Worksheet, result: AnalysisResult) -> None:
     for row in rows:
         ws.append(list(row))
     ws.freeze_panes = "A2"
-    _widths(ws, {1: 20, 2: 90, 3: 30})
+    _widths(ws, {1: 20, 2: 90, 3: 40})
 
 
 def export_dd_pack(result: AnalysisResult, out_dir: Path) -> Path:
@@ -633,6 +698,8 @@ def export_dd_pack(result: AnalysisResult, out_dir: Path) -> Path:
     _reconciliation(sheets["Avstämning"], result)
     _summary(sheets["Sammanfattning"], result, rr_rows, period_col, adjusted_row, nwc, net_debt_row)
     _sources(sheets["Källor"], result)
+    # openpyxl stores no computed values; make Excel calculate on open (also in Protected View).
+    wb.calculation.fullCalcOnLoad = True
 
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "dd_pack.xlsx"

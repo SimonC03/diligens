@@ -7,6 +7,7 @@ only when the voucher has a single EBITDA account. A collective voucher (payroll
 daily sales journal) goes to review, since adding it back whole would overstate EBITDA.
 """
 
+import re
 from collections import defaultdict
 from decimal import Decimal
 
@@ -69,26 +70,38 @@ _CANDIDATE_LABELS: dict[FlagCategory, str] = {
     **{c: label for c, (label, _) in _ADJUSTING.items()},
     "narstaende": "Närstående",
 }
-_RELATED_NOTE = "Närstående part, ej justerat. Bedöm om villkoren är marknadsmässiga."
-_REVIEW_NOTE = "Kräver granskning, konfidens under 0,7."
+_THRESHOLD = f"{REVIEW_CONFIDENCE:.1f}".replace(".", ",")
+_RELATED_NOTE = (
+    "Närstående part, ej justerat. Bedöm om villkoren är marknadsmässiga; med Inkludera 1 "
+    "läggs hela beloppet tillbaka."
+)
+_REVIEW_NOTE = f"Kräver granskning, konfidens under {_THRESHOLD}."
+
+
+def _text(voucher: Voucher) -> str:
+    """Voucher text without dates and numbers, so a monthly series reads as one item."""
+    words = re.sub(r"[\d\-./:]+", " ", voucher.text).split()
+    return " ".join(words).strip(" ,")[:60]
 
 
 def _item(
+    *,
     category: FlagCategory,
     label: str,
+    account: str,
     members: list[Voucher],
     ledger: Ledger,
     period: list[str],
     note: str | None,
     included: bool,
-    account: str,
 ) -> BridgeItem:
     name = ledger.accounts[account].name if account in ledger.accounts else account
     refs = [v.ref for v in members]
     shown = ", ".join(refs[:5]) + (f" m.fl. ({len(refs)} st)" if len(refs) > 5 else "")
+    text = _text(members[0])
     return BridgeItem(
         category=category,
-        label=f"{label}: {name}",
+        label=f"{label}: {name}" + (f", {text}" if text else ""),
         accounts=sorted({a for v in members for a in ebitda_lines(v)}),
         voucher_refs=refs,
         amount=sum((ebitda_effect(v) for v in members), ZERO),
@@ -142,27 +155,27 @@ def ebitda_bridge(kpis: KPIs, ledger: Ledger, flags: list[Flag]) -> EbitdaBridge
 
     items = [
         _item(
-            category,
-            _ADJUSTING[category][0],
-            members,
-            ledger,
-            period,
-            _ADJUSTING[category][1],
-            True,
-            account,
+            category=category,
+            label=_ADJUSTING[category][0],
+            account=account,
+            members=members,
+            ledger=ledger,
+            period=period,
+            note=_ADJUSTING[category][1],
+            included=True,
         )
         for (category, account), members in sorted(groups.items())
     ]
     listed = [
         _item(
-            category,
-            _CANDIDATE_LABELS[category],
-            members,
-            ledger,
-            period,
-            _RELATED_NOTE if kind == "narstaende" else _REVIEW_NOTE,
-            False,
-            account,
+            category=category,
+            label=_CANDIDATE_LABELS[category],
+            account=account,
+            members=members,
+            ledger=ledger,
+            period=period,
+            note=_RELATED_NOTE if kind == "narstaende" else _REVIEW_NOTE,
+            included=False,
         )
         for (kind, category, account), members in sorted(candidates.items())
     ]

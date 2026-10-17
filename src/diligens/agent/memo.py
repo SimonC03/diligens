@@ -24,8 +24,11 @@ log = logging.getLogger(__name__)
 
 MAX_WORDS = 450
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
-_LIST_NUMBER = re.compile(r"^\s*\d+\.\s", re.MULTILINE)  # markdown list markers are not data
-_DASH = re.compile(r"(?<=\S)\s[-–—]\s")
+_LIST_NUMBER = re.compile(
+    r"^[ \t]*\d{1,2}\.[ \t]", re.MULTILINE
+)  # markdown list markers are not data
+# A dash between words, not a list marker at the start of a line.
+_DASH = re.compile(r"(?<=\S)[ \t][-–—][ \t]")
 
 SYSTEM_PROMPT = """\
 Du skriver ett kort memo på svenska till en rådgivare i en finansiell due diligence av ett
@@ -56,6 +59,13 @@ def _percent(value: Decimal | None) -> str | None:
     return None if value is None else f"{value * 100:.1f} %".replace(".", ",")
 
 
+def _signed(value: Decimal) -> str:
+    return ("+" if value > 0 else "") + f"{format_tsek(value)} TSEK"
+
+
+MAX_POSTS = 5
+
+
 def memo_facts(result: AnalysisResult) -> dict[str, str]:
     """Named facts with values formatted for the advisor. The only source of numbers."""
     kpis, bridge = result.kpis, result.bridge
@@ -63,6 +73,13 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
     series = kpis.ltm if bridge.basis == "LTM" else kpis.ytd
     basis = "LTM" if bridge.basis == "LTM" else "hittills i år"
     last = kpis.months[-1]
+    taxes = [i for i in kpis.net_debt_items if i.kind == "beraknad_skatt"]
+    estimated_tax = (
+        f", inklusive beräknad ej bokförd skatt om "
+        f"{format_tsek(sum((i.amount for i in taxes), Decimal(0)))} TSEK"
+        if taxes
+        else ""
+    )
     facts: dict[str, str | None] = {
         "bolag": result.company_name,
         "orgnr": result.org_nr,
@@ -72,7 +89,7 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
         "ebitda": _tsek(series["ebitda"].values[month]),
         "ebitda_marginal": _percent(series["ebitda_marginal"].values[month]),
         "justerad_ebitda": _tsek(bridge.adjusted),
-        "justering": _tsek(bridge.adjusted - bridge.reported),
+        "justering": _signed(bridge.adjusted - bridge.reported),
         "tillvaxt": _percent(kpis.ltm["tillvaxt"].values.get(last)),
         "rorelsekapital": _tsek(kpis.nwc.values[last]),
         "rorelsekapital_normal": _tsek(kpis.nwc_normal.value),
@@ -80,29 +97,37 @@ def memo_facts(result: AnalysisResult) -> dict[str, str]:
             f"en nettokassa om {format_tsek(-kpis.net_debt)} TSEK"
             if kpis.net_debt < 0
             else f"en nettoskuld om {format_tsek(kpis.net_debt)} TSEK"
-        ),
+        )
+        + estimated_tax,
         "nettoskuld_datum": kpis.net_debt_month,
         "avstamning": (
-            "ingen differens mot bokslutet"
+            "ingen differens mot SIE-filens saldon"
             if result.reconciliation.ok
-            else "differenser mot bokslutet som måste utredas"
+            else "differenser mot SIE-filens saldon som måste utredas"
         ),
         "antal_flaggor": str(len(result.flags)),
         "antal_granskning": str(len(bridge.review)),
         "antal_fragor": str(len(result.questions)),
     }
     items = sorted(bridge.items, key=lambda i: -abs(i.amount))
-    for n, item in enumerate(items[:3], start=1):
-        facts[f"post_{n}"] = f"{item.label} {format_tsek(item.amount)} TSEK"
+    facts["urval"] = ", varav de största" if len(items) > MAX_POSTS else ""
+    for n, item in enumerate(items[:MAX_POSTS], start=1):
+        facts[f"post_{n}"] = f"{item.label}, EBITDA-effekt {_signed(item.amount)}"
     for n, item in enumerate(sorted(bridge.candidates, key=lambda i: -abs(i.amount))[:2], 1):
-        facts[f"kandidat_{n}"] = f"{item.label} {format_tsek(item.amount)} TSEK"
+        facts[f"kandidat_{n}"] = (
+            f"{item.label}, EBITDA-effekt om den tas med {_signed(item.amount)}"
+        )
     for n, question in enumerate(result.questions[:3], start=1):
-        facts[f"fraga_{n}"] = question.text.split(" (konto")[0]
+        facts[f"fraga_{n}"] = question.wording or question.text
     return {k: v for k, v in facts.items() if v is not None}
 
 
 def _fill(markdown: str, facts: dict[str, str]) -> str:
-    return _PLACEHOLDER.sub(lambda m: facts[m.group(1)], markdown).strip() + "\n"
+    """Put the values in. A fact the data does not allow (e.g. a margin without revenue)
+    reads as "uppgift saknas" rather than failing."""
+    return (
+        _PLACEHOLDER.sub(lambda m: facts.get(m.group(1), "uppgift saknas"), markdown).strip() + "\n"
+    )
 
 
 def _template(facts: dict[str, str]) -> str:
@@ -110,7 +135,9 @@ def _template(facts: dict[str, str]) -> str:
         "## Sammanfattning",
         "",
         "{bolag} ({orgnr}) har analyserats för perioden {period}. Nettoomsättningen uppgick "
-        "till {omsattning} och EBITDA till {ebitda}, en marginal om {ebitda_marginal} ({bas})."
+        "till {omsattning} och EBITDA till {ebitda}"
+        + (", en marginal om {ebitda_marginal}" if "ebitda_marginal" in facts else "")
+        + " ({bas})."
         + (
             " Omsättningen växte med {tillvaxt} jämfört med föregående tolvmånadersperiod."
             if "tillvaxt" in facts
@@ -121,9 +148,9 @@ def _template(facts: dict[str, str]) -> str:
         "## Normaliseringar",
         "",
     ]
-    posts = [k for k in ("post_1", "post_2", "post_3") if k in facts]
+    posts = [f"post_{n}" for n in range(1, MAX_POSTS + 1) if f"post_{n}" in facts]
     if posts:
-        lines += ["Justeringar med tillräcklig säkerhet, sammantaget {justering}:", ""]
+        lines += ["Justeringar med tillräcklig säkerhet, sammantaget {justering}{urval}:", ""]
         lines += [f"- {{{k}}}" for k in posts]
     else:
         lines.append("Inga justeringar har gjorts med tillräcklig säkerhet.")
@@ -166,7 +193,7 @@ def _check(facts: dict[str, str]) -> Callable[[_Memo], list[str]]:
         prose = _LIST_NUMBER.sub("", _PLACEHOLDER.sub("", text))
         if re.search(r"\d", prose):
             problems.append("Texten innehåller siffror. Skriv alla tal som platshållare.")
-        if _DASH.search(prose):
+        if _DASH.search(_PLACEHOLDER.sub("X", text)):
             problems.append("Texten använder tankstreck som skiljetecken.")
         if "## Sammanfattning" not in text:
             problems.append("Rubriken ## Sammanfattning saknas.")
