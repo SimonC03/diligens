@@ -26,6 +26,29 @@
 </div>
 {% endmacro %}
 
+{% macro runs_panel(runs, title="Körningar") %}
+{% if runs %}
+<section id="korningar" style="margin-bottom: 28px">
+  <div class="section-head"><h2>{{ title }}</h2></div>
+  <div class="panel">
+    <table class="table">
+      <tbody>
+        {% for job in runs %}
+        <tr class="clickable" data-href="/jobb/{{ job.id }}" {% if job.status == 'körs' %}data-run="{{ job.id }}"{% endif %}>
+          <td style="width: 150px">{% if job.status == 'körs' %}<span class="badge accent"><span class="dot on"></span>Pågår</span>{% else %}<span class="badge neg">Avbröts</span>{% endif %}</td>
+          <td><a href="/jobb/{{ job.id }}"><strong>{{ job.title }}</strong></a>
+            <div class="cell-sub" data-run-stage>{% if job.status == 'körs' %}{{ job.stage_name }}{% if job.detail %} · {{ job.detail }}{% endif %}{% else %}{{ job.error }}{% endif %}</div>
+          </td>
+          <td class="num muted nowrap">{{ job.started.strftime('%H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endmacro %}
+
 {% macro intro(text) %}
 <p class="lede" style="margin: -8px 0 18px">{{ text }}</p>
 {% endmacro %}

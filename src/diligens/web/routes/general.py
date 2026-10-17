@@ -108,6 +108,7 @@ def job_status(job_id: str, ctx: CtxDep) -> JSONResponse:
         {
             "status": job.status,
             "current": job.current,
+            "stage": job.stage_name,
             "detail": job.detail,
             "error": job.error,
             "target": job.target,

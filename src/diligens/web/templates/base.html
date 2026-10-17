@@ -30,6 +30,12 @@
       <a class="nav-item {% if nav == 'installningar' %}active{% endif %}" href="/installningar">Inställningar</a>
     </nav>
 
+    {% if running %}
+    <a class="run-indicator" data-run-indicator="{{ running|map(attribute='id')|join(',') }}" href="{{ '/jobb/' ~ running[0].id if running|length == 1 else '/#korningar' }}">
+      <span class="dot on"></span>{{ running|length }} {{ 'körning' if running|length == 1 else 'körningar' }} pågår
+    </a>
+    {% endif %}
+
     <div class="sidebar-foot">
       <div class="conn"><span>AI-klassning</span><span class="dot {{ 'on' if status.ai else 'off' }}" title="{{ status.model if status.ai else 'Av, ingen nyckel' }}"></span></div>
       <div class="conn"><span>SCB</span><span class="dot {{ 'on' if status.scb else 'off' }}" title="{{ 'Konfigurerad' if status.scb else 'Ingen nyckel' }}"></span></div>

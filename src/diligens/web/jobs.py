@@ -21,6 +21,7 @@ from diligens.sources.scb import ScbError
 log = logging.getLogger(__name__)
 
 JobKind = Literal["analys", "screening", "memo"]
+FAILED_SHOWN = dt.timedelta(hours=1)
 UNEXPECTED = "Ett oväntat fel inträffade. Detaljerna finns i terminalen där appen körs."
 
 
@@ -37,6 +38,10 @@ class Job(BaseModel):
     back: str = Field(default="", description="page to return to on error")
     started: dt.datetime
     finished: dt.datetime | None = None
+
+    @property
+    def stage_name(self) -> str:
+        return self.stages[self.current] if 0 <= self.current < len(self.stages) else ""
 
     @property
     def seconds(self) -> float:
@@ -90,6 +95,19 @@ class JobRunner:
     def shutdown(self) -> None:
         """Stop taking work and let the app exit without waiting for a running job."""
         self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def visible(self) -> list[Job]:
+        """Runs still going, and runs that failed in the last FAILED_SHOWN, newest first:
+        what the advisor may have left the progress page of."""
+        cutoff = dt.datetime.now() - FAILED_SHOWN
+        with self._lock:
+            jobs = [
+                job.model_copy()
+                for job in self._jobs.values()
+                if job.status == "körs"
+                or (job.status == "fel" and job.finished is not None and job.finished > cutoff)
+            ]
+        return sorted(jobs, key=lambda j: j.started, reverse=True)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:

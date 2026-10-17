@@ -69,10 +69,17 @@ class Ctx:
     def page(
         self, request: Request, name: str, nav: str, status_code: int = 200, **context: Any
     ) -> HTMLResponse:
+        runs = self.jobs.visible()
         return self.templates.TemplateResponse(
             request,
             name,
-            {"nav": nav, "status": self.status(), **context},
+            {
+                "nav": nav,
+                "status": self.status(),
+                "runs": runs,
+                "running": [job for job in runs if job.status == "körs"],
+                **context,
+            },
             status_code=status_code,
         )
 

@@ -312,8 +312,74 @@
     });
   }
 
+  // ---------------------------------------------------------- running jobs
+
+  function watchRuns() {
+    var rows = $$("[data-run]");
+    var indicator = $("[data-run-indicator]");
+    var ids = rows.map(function (row) {
+      return row.getAttribute("data-run");
+    });
+    if (indicator) {
+      indicator.getAttribute("data-run-indicator").split(",").forEach(function (id) {
+        if (id && ids.indexOf(id) < 0) {
+          ids.push(id);
+        }
+      });
+    }
+    if (!ids.length) {
+      return;
+    }
+
+    function state(id) {
+      return fetch("/api/jobb/" + id)
+        .then(function (response) {
+          return response.ok ? response.json() : { status: "borta" };
+        })
+        .catch(function () {
+          return { status: "körs" }; // the app is busy; ask again
+        });
+    }
+
+    function tick() {
+      Promise.all(ids.map(state)).then(function (states) {
+        var running = [];
+        var finished = false;
+        states.forEach(function (job, index) {
+          var row = $('[data-run="' + ids[index] + '"]');
+          if (job.status === "körs") {
+            running.push(ids[index]);
+            if (row && job.stage) {
+              $("[data-run-stage]", row).textContent =
+                job.stage + (job.detail ? " · " + job.detail : "");
+            }
+          } else {
+            finished = true;
+          }
+        });
+        if (finished && rows.length) {
+          window.location.reload(); // a list or the overview: show the finished result
+          return;
+        }
+        if (indicator && !running.length) {
+          indicator.remove();
+          return;
+        }
+        if (indicator && finished) {
+          indicator.lastChild.textContent =
+            running.length + (running.length === 1 ? " körning pågår" : " körningar pågår");
+        }
+        ids = running;
+        window.setTimeout(tick, 2000);
+      });
+    }
+
+    window.setTimeout(tick, 2000);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     themeChoice();
+    watchRuns();
     $$("[data-job]").forEach(pollJob);
     $$(".dropzone").forEach(dropzone);
     $$("[data-bridge]").forEach(bridge);

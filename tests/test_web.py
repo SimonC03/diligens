@@ -3,6 +3,8 @@ local-only safety. Synthetic data, fake SCB and Bolagsverket, no network and no 
 
 import datetime as dt
 import io
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from diligens.sie.generator import build_demo_company, generate_demo_company
 from diligens.sources.bolagsverket import BolagsverketUnavailable
 from diligens.web import views
 from diligens.web.app import create_app
+from diligens.web.jobs import Reporter
 from diligens.web.workspace import AnalysisMeta, Workspace
 
 SECRETS = ("scb-key-not-real", "bv-id-not-real", "bv-secret-not-real")
@@ -421,3 +424,47 @@ def test_screening_can_fetch_what_bolagsverket_did_not_answer(tmp_path: Path, de
         assert completed.url.path == f"/screening/{item_id}"
         assert "Hämta återstående" not in completed.text
         assert "Kunde inte hämtas" not in completed.text and "Saknas digitalt" in completed.text
+
+
+def test_running_and_failed_jobs_stay_visible(tmp_path: Path, demo: Path) -> None:
+    """Leaving the progress page must not hide a run: overview, lists and the menu show it."""
+    release = threading.Event()
+    app = create_app(
+        settings_provider=_settings,
+        workspace=tmp_path / "arbetsyta",
+        demo_file=demo,
+        allowed_hosts=("testserver",),
+    )
+    jobs = app.state.ctx.jobs
+
+    def slow(report: Reporter) -> str:
+        report.stage("Hämtar bolag i vald bransch")
+        release.wait(10)
+        return "/screening"
+
+    def broken(report: Reporter) -> str:
+        raise ValueError("SCB svarar inte just nu.")
+
+    with TestClient(app) as client:
+        running = jobs.start("screening", "Screening 62100", ["Hämtar bolag i vald bransch"], slow)
+        failed = jobs.start("analys", "Analyserar fel.se", ["Läser SIE-filen"], broken)
+        for _ in range(100):
+            if jobs.get(failed.id).status == "fel":
+                break
+            time.sleep(0.02)
+
+        overview = client.get("/").text
+        assert "Screening 62100" in overview and f"/jobb/{running.id}" in overview
+        assert "Hämtar bolag i vald bransch" in overview  # the stage it is in
+        assert "Analyserar fel.se" in overview and "SCB svarar inte just nu." in overview
+        assert "1 körning pågår" in client.get("/metod").text  # the menu, on any page
+        assert "Screening 62100" in client.get("/screening").text
+        assert "Screening 62100" not in client.get("/analyser").text
+        assert "Analyserar fel.se" in client.get("/analyser").text
+
+        release.set()
+        for _ in range(100):
+            if jobs.get(running.id).status == "klar":
+                break
+            time.sleep(0.02)
+        assert "1 körning pågår" not in client.get("/metod").text
