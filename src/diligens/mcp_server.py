@@ -6,6 +6,8 @@ tracebacks. An analysis is cached per file, so follow-up questions do not repeat
 MCP Python SDK 2.x: the server class is MCPServer (FastMCP was renamed in v2).
 """
 
+import threading
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal
@@ -48,15 +50,34 @@ Narstaende = Annotated[
     Field(description="Namn på bolag eller personer i ägarens sfär, för förfiltret."),
 ]
 
-_cache: dict[tuple[str, int, bool, tuple[str, ...]], tuple[AnalysisResult, str]] = {}
+
+@dataclass(frozen=True)
+class _Entry:
+    mtime: int
+    use_llm: bool
+    parties: tuple[str, ...]
+    result: AnalysisResult
+
+
+# One analysis per file. Tools run in worker threads, so the lock makes a second call wait
+# for the first instead of starting another (paid) AI run.
+_cache: dict[str, _Entry] = {}
+_lock = threading.Lock()
+
+NO_KEY_NOTE = "AI-nyckel saknas, analysen kördes utan AI och flaggorna kräver granskning."
 
 
 def clear_cache() -> None:
-    _cache.clear()
+    with _lock:
+        _cache.clear()
+
+
+def _clean(text: str) -> str:
+    return text.strip().strip("\"'")
 
 
 def _path(sie_fil: str) -> Path:
-    path = Path(sie_fil.strip().strip('"')).expanduser()
+    path = Path(_clean(sie_fil)).expanduser()
     if not path.is_absolute():
         path = Path.cwd() / path
     if not path.exists():
@@ -72,22 +93,55 @@ def _path(sie_fil: str) -> Path:
     return path.resolve()
 
 
-def _analysis(sie_fil: str, med_ai: bool, narstaende: list[str]) -> tuple[AnalysisResult, str]:
-    """The analysis for this file, from the cache when the file has not changed."""
+def _analysis(
+    sie_fil: str, med_ai: bool | None, narstaende: list[str] | None
+) -> tuple[AnalysisResult, str]:
+    """The analysis for this file, reused while the file is unchanged.
+
+    `med_ai=None` accepts whatever is cached and otherwise runs without AI (for the
+    deterministic KPIs). `narstaende=None` accepts the cached names, so follow-up tools see
+    the same analysis as the summary. The note is worked out on every call.
+    """
     path = _path(sie_fil)
-    note = ""
-    use_llm = med_ai
-    if med_ai and not get_settings().llm_enabled:
-        use_llm = False
-        note = "AI-nyckel saknas, analysen kördes utan AI och flaggorna kräver granskning."
-    key = (str(path), path.stat().st_mtime_ns, use_llm, tuple(sorted(narstaende)))
-    if key not in _cache:
+    has_key = get_settings().llm_enabled
+    note = NO_KEY_NOTE if med_ai and not has_key else ""
+    with _lock:
+        mtime = path.stat().st_mtime_ns
+        entry = _cache.get(str(path))
+        if (
+            entry is not None
+            and entry.mtime == mtime
+            and (med_ai is None or entry.use_llm == (med_ai and has_key))
+            and (narstaende is None or entry.parties == tuple(sorted(narstaende)))
+        ):
+            return entry.result, note
+        use_llm = bool(med_ai) and has_key
+        parties = tuple(sorted(narstaende or []))
         try:
-            result = run_analysis(path, use_llm=use_llm, related_parties=narstaende)
+            result = run_analysis(path, use_llm=use_llm, related_parties=list(parties))
         except (ValueError, OSError, LlmError) as exc:
             raise ToolError(f"Analysen kunde inte köras: {exc}") from exc
-        _cache[key] = (result, note)
-    return _cache[key]
+        _cache[str(path)] = _Entry(mtime, use_llm, parties, result)
+        return result, note
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def _output_folder(mapp: str) -> Path:
+    """Output folder; inside the repository only output/ (gitignored) is allowed, so a real
+    company's pack never ends up in a tracked folder."""
+    folder = Path(_clean(mapp)).expanduser()
+    if not folder.is_absolute():
+        folder = Path.cwd() / folder
+    folder = folder.resolve()
+    output = REPO / "output"
+    if folder.is_relative_to(REPO) and not folder.is_relative_to(output):
+        raise ToolError(
+            f"{folder} ligger i projektmappen. Skriv till {output} eller till en mapp utanför "
+            "projektet."
+        )
+    return folder
 
 
 def _tsek(value: Decimal | None) -> str:
@@ -111,7 +165,7 @@ def analysera_sie(
     """Analysera en SIE4-fil: avstämning mot filens saldon, nettoomsättning, EBITDA och
     justerad EBITDA (LTM eller hittills i år), rörelsekapital, nettoskuld, normaliseringar
     och antal poster som kräver granskning. Alla belopp i TSEK, beräknade från bokföringen."""
-    result, note = _analysis(sie_fil, med_ai, narstaende or [])
+    result, note = _analysis(sie_fil, med_ai, narstaende)
     kpis, bridge, rec = result.kpis, result.bridge, result.reconciliation
     month = bridge.month
     series = kpis.ltm if bridge.basis == "LTM" else kpis.ytd
@@ -158,7 +212,7 @@ def flagga_poster(
     sie_fil: SieFil,
     med_ai: MedAi = True,
     status: Annotated[
-        Literal["alla", "justerad", "granskning", "ej justerad", "normal"],
+        Literal["alla", "justerad", "granskning", "ej justerad", "utanför perioden", "normal"],
         Field(description="Visa bara poster med denna status."),
     ] = "alla",
     max_antal: Annotated[
@@ -169,12 +223,13 @@ def flagga_poster(
     """Lista flaggade poster (normaliseringskandidater) med verifikat, datum, konto, belopp i
     resultatet, kategori, konfidens, status i EBITDA-bryggan och motivering. Sorterat på
     status och belopp."""
-    result, note = _analysis(sie_fil, med_ai, narstaende or [])
+    result, note = _analysis(sie_fil, med_ai, narstaende)
     statuses = flag_statuses(result)
     wanted = {
         "justerad": "Justerad",
         "granskning": "Kräver granskning",
         "ej justerad": "Ej justerad, fråga",
+        "utanför perioden": "Utanför perioden",
         "normal": "Normal",
     }
     rows = sorted(
@@ -210,11 +265,11 @@ def hamta_nyckeltal(
         str | None,
         Field(description="Månad som ÅÅÅÅ-MM. Utelämna för den senaste månaden i filen."),
     ] = None,
-    med_ai: MedAi = True,
 ) -> str:
     """Nyckeltal för en månad: nettoomsättning, bruttoresultat, EBITDA, EBIT och marginaler
     för månaden, hittills i år och LTM, samt rörelsekapital och nettoskuld per post."""
-    result, note = _analysis(sie_fil, med_ai, [])
+    # KPIs are deterministic: reuse any cached analysis, otherwise run without AI.
+    result, note = _analysis(sie_fil, None, None)
     kpis = result.kpis
     month = (manad or kpis.months[-1]).strip()
     if month not in kpis.months:
@@ -270,19 +325,19 @@ def exportera_excel(
 ) -> str:
     """Skapa DD-underlaget i Excel (tio flikar med formler och källor) och ett memo på en sida.
     Returnerar sökvägarna och memot."""
-    result, note = _analysis(sie_fil, med_ai, narstaende or [])
-    folder = Path(mapp).expanduser()
-    if not folder.is_absolute():
-        folder = Path.cwd() / folder
+    result, note = _analysis(sie_fil, med_ai, narstaende)
+    folder = _output_folder(mapp)
     try:
         workbook = export_dd_pack(result, folder)
         memo = folder / "memo.md"
         memo.write_text(result.memo, encoding="utf-8")
-    except OSError as exc:
+    except PermissionError as exc:
         raise ToolError(
-            f"Kunde inte skriva till {folder} ({exc.strerror}). "
-            "Stäng filen i Excel och försök igen."
+            f"Kunde inte skriva till {folder}. Filen är troligen öppen i Excel; stäng den och "
+            "försök igen."
         ) from exc
+    except OSError as exc:
+        raise ToolError(f"Kunde inte skriva till {folder} ({exc.strerror}).") from exc
     lines = [note] if note else []
     lines += [f"Excel: {workbook}", f"Memo: {memo}", "", result.memo]
     return "\n".join(lines)

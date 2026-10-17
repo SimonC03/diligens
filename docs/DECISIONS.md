@@ -158,3 +158,8 @@ Format: `YYYY-MM-DD` decision, reason.
   back to the deterministic run and say so, instead of failing. The analysis is cached per
   resolved path, file modification time, AI setting and related party names, so follow-up
   tools reuse it and a changed file is analysed again.
+- 2026-10-17 MCP cache: one analysis per file, guarded by a lock so parallel tool calls on a
+  cold cache run it once. A call reuses the cached analysis when the file is unchanged, the
+  AI setting matches and the related party names match (or none are given). hamta_nyckeltal
+  is deterministic and reuses any cached analysis or runs without AI. exportera_excel only
+  writes to output/ inside the project or to folders outside it.

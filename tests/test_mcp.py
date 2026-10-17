@@ -1,5 +1,7 @@
 """M5 MCP server tests, through the SDK's in-memory client. No API calls (med_ai=False)."""
 
+import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +9,7 @@ import pytest
 from mcp import Client
 
 import diligens.mcp_server as server
+from diligens.agent._llm import LlmError
 from diligens.config import Settings
 from diligens.sie.generator import generate_demo_company
 
@@ -59,10 +62,16 @@ async def test_tools_run_end_to_end(sie: Path, tmp_path: Path) -> None:
         assert len(rows) == 2 + 5  # header, separator and five items
         assert "Verifikat" in rows[0] and "Konto" in rows[0]
 
-        kpis = await client.call_tool(
-            "hamta_nyckeltal", {"sie_fil": str(sie), "med_ai": False, "manad": "2025-06"}
-        )
+        kpis = await client.call_tool("hamta_nyckeltal", {"sie_fil": str(sie), "manad": "2025-06"})
         assert "2025-06" in _text(kpis) and "EBITDA" in _text(kpis)
+        latest = await client.call_tool("hamta_nyckeltal", {"sie_fil": str(sie)})
+        assert "Nyckeltal 2025-12" in _text(latest)
+
+        review = await client.call_tool(
+            "flagga_poster", {"sie_fil": str(sie), "med_ai": False, "status": "granskning"}
+        )
+        review_rows = [r for r in _text(review).splitlines() if r.startswith("| ")][1:]
+        assert review_rows and all("Kräver granskning" in r for r in review_rows)
 
         out = tmp_path / "pack"
         export = await client.call_tool(
@@ -71,6 +80,13 @@ async def test_tools_run_end_to_end(sie: Path, tmp_path: Path) -> None:
         assert not export.is_error, _text(export)
         assert (out / "dd_pack.xlsx").exists() and (out / "memo.md").exists()
         assert "dd_pack.xlsx" in _text(export)
+
+        # Inside the repository only output/ is allowed, so client data never lands in git.
+        docs = await client.call_tool(
+            "exportera_excel",
+            {"sie_fil": str(sie), "med_ai": False, "mapp": str(server.REPO / "docs")},
+        )
+        assert docs.is_error and "projektmappen" in _text(docs)
 
 
 @pytest.mark.anyio
@@ -82,40 +98,82 @@ async def test_bad_input_gives_readable_errors(
     async with Client(server.mcp) as client:
         missing = await client.call_tool("analysera_sie", {"sie_fil": str(tmp_path / "x.se")})
         assert missing.is_error and "finns inte" in _text(missing)
+        quoted = await client.call_tool("analysera_sie", {"sie_fil": f"'{sie}'", "med_ai": False})
+        assert not quoted.is_error  # quotes around a pasted path are fine
         wrong = await client.call_tool("analysera_sie", {"sie_fil": str(other)})
         assert wrong.is_error and "SIE" in _text(wrong)
-        month = await client.call_tool(
-            "hamta_nyckeltal", {"sie_fil": str(sie), "med_ai": False, "manad": "2031-01"}
-        )
+        month = await client.call_tool("hamta_nyckeltal", {"sie_fil": str(sie), "manad": "2031-01"})
         assert month.is_error and "2024-01" in _text(month)  # tells which months exist
         too_many = await client.call_tool(
             "flagga_poster", {"sie_fil": str(sie), "med_ai": False, "max_antal": 0}
         )
         assert too_many.is_error
 
-    # Without an API key the analysis still runs, without AI, and says so.
+    def locked(*args: Any, **kwargs: Any) -> Path:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(server, "export_dd_pack", locked)
+    async with Client(server.mcp) as client:
+        blocked = await client.call_tool(
+            "exportera_excel", {"sie_fil": str(sie), "med_ai": False, "mapp": str(tmp_path)}
+        )
+    assert blocked.is_error and "öppen i Excel" in _text(blocked)
+
+    def rejected(*args: Any, **kwargs: Any) -> Any:
+        raise LlmError("API-nyckeln avvisades.")
+
     server.clear_cache()
+    monkeypatch.setattr(server, "run_analysis", rejected)
+    async with Client(server.mcp) as client:
+        failed = await client.call_tool("analysera_sie", {"sie_fil": str(sie), "med_ai": False})
+    assert failed.is_error and "API-nyckeln avvisades" in _text(failed)
+
+
+@pytest.mark.anyio
+async def test_no_key_note_and_cache_rules(
+    sie: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server.clear_cache()
+    calls: list[dict[str, Any]] = []
+    original = server.run_analysis
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(server, "run_analysis", counting)
     monkeypatch.setattr(
         server, "get_settings", lambda: Settings(_env_file=None, anthropic_api_key=None)
     )
     async with Client(server.mcp) as client:
-        offline = await client.call_tool("analysera_sie", {"sie_fil": str(sie)})
-    assert not offline.is_error and "utan AI" in _text(offline)
+        # Parallel calls on a cold cache run the analysis once.
+        results = await asyncio.gather(
+            *(
+                client.call_tool(tool, {"sie_fil": str(sie), "med_ai": False})
+                for tool in ("analysera_sie", "flagga_poster", "exportera_excel")
+            ),
+            client.call_tool("hamta_nyckeltal", {"sie_fil": str(sie)}),
+        )
+        assert not any(r.is_error for r in results[:2] + results[3:])
+        assert len(calls) == 1
 
+        # Asking for AI without a key reuses the run without AI and says so every time.
+        for _ in range(2):
+            again = await client.call_tool("analysera_sie", {"sie_fil": str(sie)})
+            assert "AI-nyckel saknas" in _text(again)
+        assert len(calls) == 1
 
-@pytest.mark.anyio
-async def test_analysis_is_cached_between_tools(sie: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    server.clear_cache()
-    calls = 0
-    original = server.run_analysis
+        # Related party names change the analysis; follow-ups without names reuse it.
+        await client.call_tool(
+            "analysera_sie", {"sie_fil": str(sie), "med_ai": False, "narstaende": ["Ägarbolaget"]}
+        )
+        await client.call_tool("flagga_poster", {"sie_fil": str(sie), "med_ai": False})
+        assert len(calls) == 2 and calls[-1]["related_parties"] == ["Ägarbolaget"]
 
-    def counting(*args: Any, **kwargs: Any) -> Any:
-        nonlocal calls
-        calls += 1
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(server, "run_analysis", counting)
-    async with Client(server.mcp) as client:
-        for tool in ("analysera_sie", "flagga_poster", "hamta_nyckeltal"):
-            await client.call_tool(tool, {"sie_fil": str(sie), "med_ai": False})
-    assert calls == 1
+        # A changed file is analysed again.
+        copy = tmp_path / "copy.se"
+        copy.write_bytes(sie.read_bytes())
+        await client.call_tool("hamta_nyckeltal", {"sie_fil": str(copy)})
+        os.utime(copy, ns=(copy.stat().st_atime_ns, copy.stat().st_mtime_ns + 10**9))
+        await client.call_tool("hamta_nyckeltal", {"sie_fil": str(copy)})
+        assert len(calls) == 4

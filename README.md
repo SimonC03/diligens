@@ -44,7 +44,9 @@ An analysis is cached per file, so follow-up questions do not repeat the AI call
 ### Claude Desktop
 
 Add to `claude_desktop_config.json` (Settings, Developer, Edit config) and restart Claude
-Desktop. On Windows use forward slashes or escaped backslashes in the path:
+Desktop. On Windows use forward slashes or escaped backslashes in the path. If Claude Desktop
+cannot find `uv`, put the full path to `uv.exe` in `command` (`where uv` shows it). The
+`--directory` argument makes the server read `.env` and write `output/` in the project:
 
 ```json
 {
@@ -59,11 +61,12 @@ Desktop. On Windows use forward slashes or escaped backslashes in the path:
 
 ### Claude Code
 
-From the repository folder:
-
 ```bash
-claude mcp add diligens -- uv run diligens-mcp
+claude mcp add diligens -- uv --directory C:/ABSOLUTE/PATH/TO/diligens run diligens-mcp
 ```
+
+Exports go to `output/` in the project (gitignored) or to a folder outside it; other folders
+inside the project are refused so client data never ends up in git.
 
 ### Manual test checklist
 

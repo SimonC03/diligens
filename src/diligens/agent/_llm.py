@@ -50,13 +50,15 @@ class Usage:
 
 def _config_error(exc: anthropic.APIStatusError, model: str) -> LlmError:
     if isinstance(exc, anthropic.AuthenticationError):
-        text = "API-nyckeln avvisades. Kontrollera ANTHROPIC_API_KEY i .env eller kör med --no-llm."
+        text = "API-nyckeln avvisades. Kontrollera ANTHROPIC_API_KEY i .env eller kör utan AI."
     elif isinstance(exc, anthropic.PermissionDeniedError):
         text = f"API-nyckeln saknar behörighet för modellen {model}."
     elif isinstance(exc, anthropic.NotFoundError):
         text = f"Modellen {model} finns inte. Kontrollera DILIGENS_MODEL i .env."
     else:
-        text = f"API:t avvisade anropet (status {exc.status_code}). Kör med --no-llm."
+        text = (
+            f"API:t avvisade anropet (status {exc.status_code}). Kör utan AI eller försök senare."
+        )
     return LlmError(text)
 
 
