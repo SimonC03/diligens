@@ -410,3 +410,28 @@ class ScbUnitFull(ScbUnit):
             ranked = sorted(data.get("naringsgrenar") or [], key=lambda n: n["rangordning"])
             data["sni_codes"] = [n["naringsgren"] for n in ranked]
         return data
+
+
+class DocumentInfo(BaseModel):
+    """One filed document in Bolagsverket's list for an organisation."""
+
+    document_id: str
+    period_end: dt.date | None = Field(default=None, description="rapporteringsperiodTom")
+    registered: dt.date | None = Field(default=None, description="registreringstidpunkt")
+
+
+class AnnualReport(BaseModel):
+    """Key figures from a digitally filed annual report (iXBRL), as reported (SEK).
+
+    Figure keys: nettoomsattning, rorelseresultat, avskrivningar, resultat_efter_finansiella,
+    arets_resultat (current year) and the same with suffix _fg (previous year); balance
+    items eget_kapital, tillgangar (and _fg); soliditet; medelantal_anstallda. Costs keep the
+    report's sign (negative). Each figure's source_ref names element, context and document.
+    """
+
+    document_id: str
+    org_nr: str
+    company_name: str = ""
+    period_start: dt.date
+    period_end: dt.date
+    figures: dict[str, Figure]

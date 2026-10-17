@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+ xmlns:ixt="http://www.xbrl.org/inlineXBRL/transformation/2010-04-20"
+ xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase"
+ xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+ xmlns:se-gen-base="http://www.taxonomier.se/se/fr/gen-base/2017-09-30"
+ xmlns:se-cd-base="http://www.taxonomier.se/se/fr/cd-base/2017-09-30">
+<head><title>Årsredovisning Exempelbolaget AB</title></head>
+<body>
+<div style="display:none"><ix:header><ix:references>
+<link:schemaRef xlink:type="simple" xlink:href="http://xbrl.taxonomier.se/se/fr/gaap/k2/risbs/2017-09-30/se-k2-risbs-2017-09-30.xsd"/>
+</ix:references><ix:resources>
+<xbrli:context id="period0"><xbrli:entity><xbrli:identifier scheme="http://www.bolagsverket.se">5599000001</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+<xbrli:context id="period1"><xbrli:entity><xbrli:identifier scheme="http://www.bolagsverket.se">5599000001</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+<xbrli:context id="balans0"><xbrli:entity><xbrli:identifier scheme="http://www.bolagsverket.se">5599000001</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>
+<xbrli:context id="balans1"><xbrli:entity><xbrli:identifier scheme="http://www.bolagsverket.se">5599000001</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period></xbrli:context>
+<xbrli:unit id="SEK"><xbrli:measure>iso4217:SEK</xbrli:measure></xbrli:unit>
+<xbrli:unit id="procent"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+<xbrli:unit id="antal-anstallda"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+</ix:resources></ix:header></div>
+
+<p>Organisationsnummer <ix:nonNumeric name="se-cd-base:Organisationsnummer" contextRef="period0">559900-0001</ix:nonNumeric>,
+<ix:nonNumeric name="se-cd-base:ForetagetsNamn" contextRef="period0">Exempelbolaget AB</ix:nonNumeric></p>
+<h2>Flerårsöversikt</h2>
+<table>
+<tr><td>Nettoomsättning</td><td><ix:nonFraction name="se-gen-base:Nettoomsattning" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">32 450 000</ix:nonFraction></td><td><ix:nonFraction name="se-gen-base:Nettoomsattning" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">28 900 000</ix:nonFraction></td></tr>
+<tr><td>Soliditet (%)</td><td><ix:nonFraction name="se-gen-base:Soliditet" contextRef="balans0" unitRef="procent" format="ixt:numcomma" scale="-2" decimals="0">41,5</ix:nonFraction></td></tr>
+</table>
+<h2>Resultaträkning</h2>
+<table>
+<tr><td>Nettoomsättning</td><td><ix:nonFraction name="se-gen-base:Nettoomsattning" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">32 450 000</ix:nonFraction></td><td><ix:nonFraction name="se-gen-base:Nettoomsattning" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">28 900 000</ix:nonFraction></td></tr>
+<tr><td>Personalkostnader</td><td>-<ix:nonFraction name="se-gen-base:Personalkostnader" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">18 200 000</ix:nonFraction></td><td>-<ix:nonFraction name="se-gen-base:Personalkostnader" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">16 750 000</ix:nonFraction></td></tr>
+<tr><td>Avskrivningar</td><td>-<ix:nonFraction name="se-gen-base:AvskrivningarNedskrivningarMateriellaImmateriellaAnlaggningstillgangar" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">640 000</ix:nonFraction></td><td>-<ix:nonFraction name="se-gen-base:AvskrivningarNedskrivningarMateriellaImmateriellaAnlaggningstillgangar" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">590 000</ix:nonFraction></td></tr>
+<tr><td>Rörelseresultat</td><td><ix:nonFraction name="se-gen-base:Rorelseresultat" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">3 245 000</ix:nonFraction></td><td>-<ix:nonFraction name="se-gen-base:Rorelseresultat" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">120 000</ix:nonFraction></td></tr>
+<tr><td>Resultat efter finansiella poster</td><td><ix:nonFraction name="se-gen-base:ResultatEfterFinansiellaPoster" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">3 180 000</ix:nonFraction></td><td>-<ix:nonFraction name="se-gen-base:ResultatEfterFinansiellaPoster" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">185 000</ix:nonFraction></td></tr>
+<tr><td>Årets resultat</td><td><ix:nonFraction name="se-gen-base:AretsResultat" contextRef="period0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">2 510 000</ix:nonFraction></td><td>-<ix:nonFraction name="se-gen-base:AretsResultat" contextRef="period1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0" sign="-">185 000</ix:nonFraction></td></tr>
+</table>
+<h2>Balansräkning</h2>
+<table>
+<tr><td>Summa tillgångar</td><td><ix:nonFraction name="se-gen-base:Tillgangar" contextRef="balans0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">14 300 000</ix:nonFraction></td><td><ix:nonFraction name="se-gen-base:Tillgangar" contextRef="balans1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">12 100 000</ix:nonFraction></td></tr>
+<tr><td>Eget kapital</td><td><ix:nonFraction name="se-gen-base:EgetKapital" contextRef="balans0" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">5 935 000</ix:nonFraction></td><td><ix:nonFraction name="se-gen-base:EgetKapital" contextRef="balans1" unitRef="SEK" format="ixt:numspacecomma" scale="0" decimals="0">3 425 000</ix:nonFraction></td></tr>
+</table>
+<p>Medelantalet anställda <ix:nonFraction name="se-gen-base:MedelantaletAnstallda" contextRef="period0" unitRef="antal-anstallda" format="ixt:numspacecomma" scale="0" decimals="0">24</ix:nonFraction></p>
+</body></html>
