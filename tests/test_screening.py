@@ -17,7 +17,7 @@ import diligens.screening as screening
 from diligens.analysis.screening import financial_score, profile_score, select_candidates
 from diligens.cli import app
 from diligens.models import AnnualReport, Figure, ScbUnit, ScreeningCriteria
-from diligens.screening import run_screening
+from diligens.screening import SCREENING_STAGES, run_screening
 from diligens.sources.bolagsverket import BolagsverketUnavailable, ReportNotReadable
 from diligens.sources.scb import ScbClient, ScbError
 
@@ -254,9 +254,19 @@ def test_run_includes_ties_and_keeps_going_after_errors(monkeypatch: pytest.Monk
 
     # Top 1 with four equal profiles: all four are looked up, with a note why.
     registry = _Registry({org(n): None for n in numbers})
+    stages: list[str] = []
+    counts: list[tuple[int, int]] = []
     tied = run_screening(
-        CRITERIA, fake_scb(units, turnover), cast(Any, registry), top=1, today=dt.date(2026, 10, 17)
+        CRITERIA,
+        fake_scb(units, turnover),
+        cast(Any, registry),
+        top=1,
+        today=dt.date(2026, 10, 17),
+        progress=stages.append,
+        on_report=lambda done, total: counts.append((done, total)),
     )
+    assert stages == list(SCREENING_STAGES)
+    assert counts[-1] == (4, 4) and len(counts) == 4
     assert tied.reports_fetched == 4 and sorted(registry.asked) == sorted(org(n) for n in numbers)
     assert any("delar profilpoängen" in n for n in tied.notes)
 

@@ -23,7 +23,7 @@ from diligens.agent._llm import LlmError
 from diligens.agent.flagging import flag_vouchers
 from diligens.agent.prefilter import prefilter
 from diligens.agent.questions import dd_questions
-from diligens.analysis.bridge import ebitda_bridge
+from diligens.analysis.bridge import ebitda_bridge, with_selection
 from diligens.analysis.kpis import compute_kpis
 from diligens.analysis.mapping import map_accounts
 from diligens.analysis.statements import monthly_statements
@@ -40,7 +40,7 @@ from diligens.models import (
     Transaction,
     Voucher,
 )
-from diligens.pipeline import run_analysis
+from diligens.pipeline import ANALYSIS_STAGES, run_analysis
 from diligens.sie.generator import build_demo_company, generate_demo_company
 from diligens.sie.parser import parse_sie
 
@@ -301,6 +301,22 @@ def test_bridge_uses_only_confident_flags(demo: tuple[Ledger, Facit]) -> None:
     assert bridge.revenue == kpis.ltm["nettoomsattning"].values["2025-12"]
     assert bridge.adjusted_revenue == bridge.revenue - Decimal("600000.00")
 
+    # The advisor's own choice (items then candidates, as in Excel) recomputes both totals.
+    choice = [i.category != "periodisering" for i in bridge.items] + [True] * len(bridge.candidates)
+    chosen = with_selection(bridge, choice)
+    every = [*chosen.items, *chosen.candidates]
+    assert [i.included for i in every] == choice
+    assert chosen.adjusted == bridge.reported + sum(i.amount for i in every if i.included)
+    assert chosen.adjusted_revenue == bridge.revenue  # the revenue item is switched off
+    assert (
+        with_selection(
+            bridge, [*[i.included for i in bridge.items], *[False] * len(bridge.candidates)]
+        )
+        == bridge
+    )
+    with pytest.raises(ValueError, match="poster"):
+        with_selection(bridge, [True])
+
     assert {f.voucher_ref for f in bridge.review} == set(a[3].voucher_refs)
     assert [f.voucher_ref for f in bridge.not_adjusted] == [stray]
     adjusted = {f.voucher_ref: f.ebitda_adjustment for f in bridge.flags}
@@ -435,7 +451,9 @@ def test_no_llm_runs_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     ):
         assert expected in result.output, expected
 
-    analysis = run_analysis(sie, use_llm=False)
+    stages: list[str] = []
+    analysis = run_analysis(sie, use_llm=False, progress=stages.append)
+    assert stages == list(ANALYSIS_STAGES)  # every stage reported once, in order
     assert not analysis.llm_used and analysis.reconciliation.ok
     assert len(analysis.flags) == len(analysis.prefilter_hits) > 0
     assert all(f.category == "avvikelse" and f.needs_review for f in analysis.flags)

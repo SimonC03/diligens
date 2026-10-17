@@ -9,6 +9,7 @@ daily sales journal) goes to review, since adding it back whole would overstate 
 
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from decimal import Decimal
 
 from diligens.analysis.mapping import is_ebitda_account, is_revenue_account
@@ -124,6 +125,26 @@ def _item(
             f"Verifikat {shown}, EBITDA-konton på verifikaten, {period[0]} till {period[-1]}"
         ),
         included=included,
+    )
+
+
+def with_selection(bridge: EbitdaBridge, included: Sequence[bool]) -> EbitdaBridge:
+    """The bridge with the advisor's Inkludera choices, one per item then candidate (the
+    order of the Excel bridge), and both totals recomputed from the chosen items."""
+    rows = [*bridge.items, *bridge.candidates]
+    if len(included) != len(rows):
+        raise ValueError(f"Urvalet har {len(included)} värden men bryggan har {len(rows)} poster.")
+    chosen = [
+        r.model_copy(update={"included": bool(on)}) for r, on in zip(rows, included, strict=True)
+    ]
+    return bridge.model_copy(
+        update={
+            "items": chosen[: len(bridge.items)],
+            "candidates": chosen[len(bridge.items) :],
+            "adjusted": bridge.reported + sum((r.amount for r in chosen if r.included), ZERO),
+            "adjusted_revenue": bridge.revenue
+            + sum((r.revenue_amount for r in chosen if r.included), ZERO),
+        }
     )
 
 
