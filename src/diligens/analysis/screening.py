@@ -6,6 +6,7 @@ rewards exact matches; the financial score (0-40) comes from the latest digital 
 report. Every point comes with a Swedish reason.
 """
 
+import datetime as dt
 from decimal import Decimal
 
 from diligens.models import (
@@ -23,6 +24,7 @@ MISSING_EMPLOYEES = "0"
 
 GROWTH_FULL, GROWTH_HALF = Decimal("0.10"), Decimal("0")
 MARGIN_FULL, MARGIN_HALF = Decimal("0.10"), Decimal("0.05")
+STALE_MONTHS = 18
 
 
 def _distance(value: str, targets: list[str]) -> int | None:
@@ -118,8 +120,13 @@ def _percent(value: Decimal) -> str:
     return f"{value * 100:.1f} %".replace(".", ",")
 
 
-def financial_score(report: AnnualReport | None) -> FinancialScore:
-    """Growth and EBIT margin points (0-40) from the latest digital annual report."""
+def financial_score(report: AnnualReport | None, today: dt.date | None = None) -> FinancialScore:
+    """Growth and EBIT margin points (0-40) from the latest digital annual report.
+
+    Growth needs a positive prior year revenue of a twelve month year and a non negative
+    EBIT (fast growth at a loss earns nothing). A report whose year ended more than
+    STALE_MONTHS before `today` is marked as old and earns no growth points.
+    """
     if report is None:
         return FinancialScore(
             points=None,
@@ -130,24 +137,44 @@ def financial_score(report: AnnualReport | None) -> FinancialScore:
     revenue = figures.get("nettoomsattning")
     prior = figures.get("nettoomsattning_fg")
     ebit = figures.get("rorelseresultat")
-    reasons: list[str] = []
+    reasons: list[str] = list(report.notes)
     points = 0
+    stale = today is not None and (today - report.period_end).days > STALE_MONTHS * 30.5
+    status = f"Årsredovisning {report.period_end.isoformat()}"
+    if stale:
+        status = f"Inaktuell årsredovisning {report.period_end.isoformat()}"
+        reasons.append(f"Årsredovisningen är äldre än {STALE_MONTHS} månader")
 
     growth = None
-    if revenue and prior:
-        growth = _ratio(revenue, prior, f"{revenue.source_ref}; {prior.source_ref}")
-        if growth is not None and growth.value is not None:
-            growth = Figure(value=growth.value - 1, source_ref=growth.source_ref)
-    if growth is None or growth.value is None:
-        reasons.append("Tillväxt saknas, föregående år finns inte i årsredovisningen")
-    else:
-        gain = 20 if growth.value >= GROWTH_FULL else 10 if growth.value >= GROWTH_HALF else 0
-        points += gain
-        reasons.append(f"Tillväxt {_percent(growth.value)} ger {gain} poäng")
-
+    if revenue and prior and revenue.value is not None and prior.value is not None:
+        if prior.value > 0:
+            growth = Figure(
+                value=revenue.value / prior.value - 1,
+                source_ref=f"{revenue.source_ref}; {prior.source_ref}",
+            )
+        else:
+            reasons.append(
+                "Tillväxt kan inte beräknas, föregående års omsättning är 0 eller negativ"
+            )
+    elif revenue and not prior:
+        reasons.append("Tillväxt saknas, föregående år finns inte eller är inte tolv månader")
     margin = None
     if revenue and ebit:
         margin = _ratio(ebit, revenue, f"{ebit.source_ref}; {revenue.source_ref}")
+
+    if growth is not None and growth.value is not None:
+        if stale:
+            reasons.append(f"Tillväxt {_percent(growth.value)} ger 0 poäng, inaktuell siffra")
+        elif ebit is not None and ebit.value is not None and ebit.value < 0:
+            reasons.append(
+                f"Tillväxt {_percent(growth.value)} ger 0 poäng eftersom rörelseresultatet är "
+                "negativt"
+            )
+        else:
+            gain = 20 if growth.value >= GROWTH_FULL else 10 if growth.value >= GROWTH_HALF else 0
+            points += gain
+            reasons.append(f"Tillväxt {_percent(growth.value)} ger {gain} poäng")
+
     if margin is None or margin.value is None:
         reasons.append("Rörelsemarginal saknas i årsredovisningen")
     else:
@@ -158,7 +185,7 @@ def financial_score(report: AnnualReport | None) -> FinancialScore:
     return FinancialScore(
         points=points,
         reasons=reasons,
-        status=f"Årsredovisning {report.period_end.year}",
+        status=status,
         period_end=report.period_end,
         revenue=revenue,
         revenue_prior=prior,

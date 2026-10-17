@@ -10,6 +10,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from diligens.models import Candidate, Figure, ScreeningResult
+from diligens.screening import with_ranks
 
 TSEK = "#,##0.0"
 PERCENT = "0.0%"
@@ -85,7 +86,7 @@ def export_long_list(result: ScreeningResult, out_dir: Path) -> Path:
     assert ws is not None
     ws.title = "Long list"
     _header(ws, COLUMNS)
-    for rank, c in enumerate(result.candidates, start=1):
+    for rank, c in with_ranks(result.candidates):
         row = ws.max_row + 1
         f = c.financial
         reasons = c.profile_reasons + (f.reasons if f else [])
@@ -94,7 +95,7 @@ def export_long_list(result: ScreeningResult, out_dir: Path) -> Path:
                 rank,
                 f"=C{row}+D{row}",
                 c.profile_points,
-                f.points if f and f.points is not None else 0,
+                f.points if f else None,
                 c.unit.name,
                 _org(c.org_nr),
                 c.unit.post_town.title(),
@@ -168,14 +169,25 @@ def export_long_list(result: ScreeningResult, out_dir: Path) -> Path:
         (
             "Poäng",
             "Profil 0 till 60 (SNI 15, omsättning 15, anställda 10, län 10, verksamt "
-            "aktiebolag 10) och nyckeltal 0 till 40 (tillväxt 20, rörelsemarginal 20)",
+            "aktiebolag 10) och nyckeltal 0 till 40 (tillväxt 20, rörelsemarginal 20). SNI och "
+            "verksamt aktiebolag är krav, så alla kandidater har de 25 poängen; det är "
+            "omsättning, anställda, län och nyckeltal som skiljer dem åt.",
             "Poängregel",
         ),
+        (
+            "Rang",
+            "Bara bolag vars årsredovisning har sökts rangordnas. Ej hämtade följer efter i "
+            "profilordning, utan rang. Tomt i Nyckeltal betyder att poäng saknas, inte noll.",
+            "Poängregel",
+        ),
+        *(("Varning", note, "Körningen") for note in result.notes),
     ):
         sheet.append([name, value, source])
     for column, width in {1: 28, 2: 70, 3: 50}.items():
         sheet.column_dimensions[get_column_letter(column)].width = width
 
+    # openpyxl stores no computed values; make Excel calculate on open (also Protected View).
+    wb.calculation.fullCalcOnLoad = True
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "long_list.xlsx"
     wb.save(path)

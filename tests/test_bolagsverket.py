@@ -49,6 +49,32 @@ def test_ixbrl_parser_reads_figures_with_scale_sign_and_periods() -> None:
         )
 
 
+def test_ixbrl_ignores_segment_contexts_and_odd_prior_years() -> None:
+    text = REPORT.decode("utf-8")
+    # A revenue note split by business line uses a context with a segment and the same dates.
+    segment = (
+        '<xbrli:context id="segA"><xbrli:entity><xbrli:identifier '
+        'scheme="http://www.bolagsverket.se">5599000001</xbrli:identifier><xbrli:segment>'
+        "Konsulting</xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01"
+        "</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>"
+        "</xbrli:context>"
+    )
+    split = (
+        '<p><ix:nonFraction name="se-gen-base:Nettoomsattning" contextRef="segA" unitRef="SEK" '
+        'format="ixt:numspacecomma" scale="0" decimals="0">1 000</ix:nonFraction></p>'
+    )
+    text = text.replace('<xbrli:context id="period0">', segment + '<xbrli:context id="period0">')
+    text = text.replace("<body>", "<body>" + split, 1)
+    # The prior year was extended to 18 months, so it is not comparable.
+    text = text.replace("<xbrli:startDate>2024-01-01", "<xbrli:startDate>2023-07-01")
+
+    report = parse_ixbrl(text.encode("utf-8"), document_id="doc-1")
+
+    assert report.figures["nettoomsattning"].value == Decimal("32450000")
+    assert "nettoomsattning_fg" not in report.figures
+    assert report.notes == ["Föregående räkenskapsår är 550 dagar och jämförs inte"]
+
+
 class Server:
     """Fake token endpoint and API, recording requests."""
 

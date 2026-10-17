@@ -487,4 +487,5 @@ class ScreeningResult(BaseModel):
     labels: dict[str, dict[str, str]] = Field(
         default_factory=dict, description="SCB code tables by name, for display"
     )
+    notes: list[str] = Field(default_factory=list, description="Swedish warnings for the run")
     generated: dt.date
