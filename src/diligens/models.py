@@ -435,3 +435,42 @@ class AnnualReport(BaseModel):
     period_start: dt.date
     period_end: dt.date
     figures: dict[str, Figure]
+
+
+class ScreeningCriteria(BaseModel):
+    """Target profile; SCB codes as strings. Empty lists mean no requirement."""
+
+    sni: list[str] = Field(description="SNI 2025, five digits, primary industry")
+    turnover_classes: list[str] = Field(default_factory=list, description="omsklkoder")
+    employee_classes: list[str] = Field(default_factory=list, description="anstklkoder")
+    counties: list[str] = Field(default_factory=list, description="lankoder of the seat")
+
+
+class FinancialScore(BaseModel):
+    points: int | None = Field(description="0-40, None without a digital annual report")
+    reasons: list[str]
+    status: str = Field(description="Swedish, e.g. 'Årsredovisning 2025' or 'Saknas digitalt'")
+    period_end: dt.date | None = None
+    revenue: Figure | None = None
+    revenue_prior: Figure | None = None
+    ebit: Figure | None = None
+    growth: Figure | None = Field(default=None, description="revenue / prior year - 1")
+    ebit_margin: Figure | None = Field(default=None, description="EBIT / revenue")
+
+
+class Candidate(BaseModel):
+    unit: ScbUnit
+    turnover_class: str = ""
+    profile_points: int
+    profile_reasons: list[str]
+    financial: FinancialScore | None = Field(
+        default=None, description="None when the annual report was not fetched (outside top N)"
+    )
+
+    @property
+    def org_nr(self) -> str:
+        return self.unit.org_nr
+
+    @property
+    def total(self) -> int:
+        return self.profile_points + (self.financial.points or 0 if self.financial else 0)
