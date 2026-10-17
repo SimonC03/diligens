@@ -19,6 +19,10 @@ Verified 2026-10-14 against the published OpenAPI 3.0.4 spec.
   Env var `SCB_API_KEY`.
 - Limits: max 5 calls per second per key; `limit` max 5 000. HTTP 429 when throttled, so
   back off and retry. Unavailable 30 minutes from 04:00 every night during the data update.
+  Verified 2026-10-17: the 5 calls per second and 5 000 rows are stated on SCB's page
+  (docs link above), which also says repeated excess can block the key temporarily; the
+  spec's introduction states the 04:00 window and HTTP 429 under load. Data is updated
+  every night except Saturday to Sunday; most fields change weekly, some yearly.
 - Errors: `application/problem+json` (ProblemDetails: `type`, `title`, `status`, `detail`,
   `instance`). Expect 400, 401, 404, 429, 500, 503.
 - Data: current state only, no history. Dates RFC 3339 in UTC.
@@ -131,7 +135,18 @@ about a dozen calls for a large industry instead of one `/full` call per company
     `verksamhetsbeskrivning`, `organisationsdatum`.
   - `POST /dokumentlista` with the same body returns 200 with `dokument[]`;
     `GET /dokument/{dokumentId}` downloads one document (annual report zip).
-  - Errors use the `ApiError` schema (`type`, `instance`, `status`, `title`).
+  - Errors use the `ApiError` schema (RFC 7807): `type`, `instance`, `status`, `title`,
+    plus `detail` in Swedish (for example "Identitetsbeteckning har ogiltig
+    kontrollsiffra."), `requestId` and `timestamp`. The client shows `detail` to the
+    advisor and sends its own `X-Request-Id` (a UUID per call), which the spec echoes in
+    errors, so a failed call can be traced with Bolagsverket support.
+  - Every operation has `x-throttling-tier: Unlimited` (WSO2 gateway). The 429s seen in a
+    real run (see Access below) therefore come from another layer, such as the
+    application or subscription tier, not from the API's own tier.
+  - The spec's examples show dates as epoch milliseconds, but real `dokumentlista`
+    entries (checked 2026-10-17) carry ISO strings: `rapporteringsperiodTom` "2025-12-31",
+    `registreringstidpunkt` "2026-06-11", plus `dokumentId` and `filformat`. Companies
+    shown as "Saknas digitalt" really return an empty `dokument` list.
 - Verified on real filings 2026-10-17 (nothing stored in the repo):
   - Many active aktiebolag have no digital annual report (four of the first five tried):
     "Saknas digitalt" is common, not an edge case.
