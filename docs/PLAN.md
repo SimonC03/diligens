@@ -107,7 +107,7 @@ Branch `m6-screening`. Modules: `sources/scb.py`, `sources/bolagsverket.py`,
 ## M7 Demo polish
 
 - [ ] `docs/DEMO.md` script, 5 minutes, rehearsed
-- [ ] Full run under 60 seconds on the laptop
+- [x] Full run under 60 seconds on the laptop
 - [ ] Backup screen recording
-- [ ] Limitations slide: paper filed reports, BAS mapping per company, client data needs
+- [x] Limitations slide: paper filed reports, BAS mapping per company, client data needs
       zero data retention or local model
