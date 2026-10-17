@@ -298,6 +298,7 @@ def test_cli_writes_workbook_that_opens_with_formulas(tmp_path: Path) -> None:
     assert run.exit_code == 0, run.output
     assert (out / "dd_pack.xlsx").exists() and (out / "memo.md").exists()
     assert "dd_pack.xlsx" in run.output
+    assert re.search(r"Klart på \d+ s", run.output)  # the demo shows the run time
     wb = load_workbook(out / "dd_pack.xlsx")
     assert wb.sheetnames == SHEETS
     formulas = sum(
