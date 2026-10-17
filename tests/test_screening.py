@@ -1,10 +1,23 @@
 """M6 screening tests: filters and fit score (pure) and the full run with fake APIs."""
 
 import datetime as dt
+import json
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
+import httpx
+import pytest
+from openpyxl import load_workbook
+from test_scb import unit as scb_unit
+from typer.testing import CliRunner
+
+import diligens.cli as cli
 from diligens.analysis.screening import financial_score, profile_score, select_candidates
+from diligens.cli import app
 from diligens.models import AnnualReport, Figure, ScbUnit, ScreeningCriteria
+from diligens.sources.bolagsverket import BolagsverketClient
+from diligens.sources.scb import ScbClient, ScbError
 
 
 def _unit(
@@ -104,3 +117,135 @@ def test_financial_score_and_missing_reports() -> None:
 
     missing = financial_score(None)
     assert missing.points is None and missing.status == "Saknas digitalt"
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _fake_scb(units: list[dict[str, Any]], turnover: dict[str, list[str]]) -> ScbClient:
+    tables = {
+        name: json.loads((FIXTURES / "scb" / f"{name}.json").read_text(encoding="utf-8"))
+        for name in ("omsklkoder", "anstklkoder", "lankoder")
+    }
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.startswith("/v1/kodtabeller/"):
+            return httpx.Response(200, json=tables[path.rsplit("/", 1)[-1]])
+        if path == "/v1/juridiskaenheter/naringsgren/62100":
+            jes = units
+        elif path.startswith("/v1/juridiskaenheter/omsattningsklass/"):
+            wanted = turnover.get(path.rsplit("/", 1)[-1], [])
+            jes = [u for u in units if u["peOrgNr"] in wanted]
+        else:
+            return httpx.Response(404, json={"status": 404, "detail": "x"})
+        return httpx.Response(
+            200,
+            json={"jes": jes, "pagination": {"nextCursorId": 0, "limit": 5000, "hasMore": False}},
+        )
+
+    return ScbClient(
+        "k",
+        transport=httpx.MockTransport(handle),
+        sleep=lambda s: None,
+        now=lambda: dt.datetime(2026, 10, 17, 12, 0),
+    )
+
+
+def _fake_registry() -> BolagsverketClient:
+    package = (FIXTURES / "bolagsverket" / "dokument_exempel.zip").read_bytes()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path.endswith("/dokumentlista"):
+            org = json.loads(request.content)["identitetsbeteckning"]
+            docs = (
+                [
+                    {
+                        "dokumentId": "d1_paket",
+                        "rapporteringsperiodTom": "2025-12-31",
+                        "registreringstidpunkt": "2026-06-30",
+                    }
+                ]
+                if org == "5599000001"
+                else []
+            )
+            return httpx.Response(200, json={"dokument": docs})
+        return httpx.Response(200, content=package)
+
+    return BolagsverketClient("i", "s", transport=httpx.MockTransport(handle))
+
+
+def test_screen_writes_long_list_with_sources_and_missing_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    units = [
+        scb_unit(1),
+        scb_unit(2, lan="12"),
+        scb_unit(3, jur="10"),  # sole trader, filtered out
+        scb_unit(4, stat="9"),  # inactive, filtered out
+        scb_unit(5, anst="8"),  # too large, filtered out
+        scb_unit(6),
+    ]
+    pe = {n: f"1655990{n:05d}" for n in range(1, 7)}
+    turnover = {"6": [pe[1], pe[2], pe[3], pe[4], pe[5]], "7": [pe[6]]}
+    monkeypatch.setattr(cli, "make_scb_client", lambda s: _fake_scb(units, turnover))
+    monkeypatch.setattr(cli, "make_bolagsverket_client", lambda s: _fake_registry())
+
+    run = CliRunner().invoke(
+        app,
+        [
+            "screen",
+            "--sni",
+            "62100",
+            "--oms-kl",
+            "6",
+            "--anst-kl",
+            "5",
+            "--lan",
+            "1",
+            "--out",
+            str(tmp_path),
+        ],
+    )
+
+    assert run.exit_code == 0, run.output
+    assert "3 kandidater av 6 bolag" in run.output
+    wb = load_workbook(tmp_path / "long_list.xlsx")
+    assert wb.sheetnames == ["Long list", "Kriterier"]
+    ws = wb["Long list"]
+    header = [c.value for c in ws[1]]
+    rows = [
+        dict(zip(header, (c.value for c in row), strict=True)) for row in ws.iter_rows(min_row=2)
+    ]
+    assert [r["Org.nr"] for r in rows] == ["559900-0001", "559900-0006", "559900-0002"]
+
+    best = rows[0]
+    assert best["Profil"] == 60 and best["Nyckeltal"] == 40  # growth 12,3 %, margin 10,0 %
+    assert best["Poäng"] == "=C2+D2"
+    assert best["Bokslut"] == "Årsredovisning 2025"
+    assert best["Nettoomsättning TSEK"] == pytest.approx(32450.0)
+    assert best["Tillväxt"] == pytest.approx(32450 / 28900 - 1)
+    assert "iXBRL se-gen-base:Nettoomsattning" in best["Källa"] and "d1_paket" in best["Källa"]
+    assert "SCB AFR" in best["Källa"]
+    assert best["Omsättningsklass"] == "20 000 - 49 999 tkr" and best["Län"] == "Stockholm"
+
+    # No digital annual report: shown as such, no figures guessed, profile score only.
+    for row in rows[1:]:
+        assert row["Bokslut"] == "Saknas digitalt"
+        assert row["Nettoomsättning TSEK"] is None and row["Nyckeltal"] == 0
+    assert "en klass från målet" in rows[1]["Skäl"]  # turnover class 7 next to 6
+    assert "annat län" in rows[2]["Skäl"]
+
+    criteria = {r[0].value: r[1].value for r in wb["Kriterier"].iter_rows(min_row=2)}
+    assert criteria["Omsättningsklass"] == "6 20 000 - 49 999 tkr"
+    assert criteria["Län"] == "01 Stockholm"
+
+    # Missing keys give a readable error.
+    def no_key(settings: Any) -> ScbClient:
+        raise ScbError("SCB_API_KEY saknas i .env.")
+
+    monkeypatch.setattr(cli, "make_scb_client", no_key)
+    failed = CliRunner().invoke(app, ["screen", "--sni", "62100", "--out", str(tmp_path)])
+    assert failed.exit_code == 1 and "SCB_API_KEY" in failed.output

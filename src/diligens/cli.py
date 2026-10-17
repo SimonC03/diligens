@@ -9,11 +9,16 @@ import typer
 
 from diligens import __version__
 from diligens.agent._llm import LlmError
+from diligens.config import get_settings
 from diligens.export.excel import export_dd_pack
+from diligens.export.longlist import export_long_list
 from diligens.formatting import format_tsek
-from diligens.models import AnalysisResult
+from diligens.models import AnalysisResult, ScreeningCriteria, ScreeningResult
 from diligens.pipeline import run_analysis
+from diligens.screening import TOP_DEFAULT, run_screening
 from diligens.sie.generator import generate_demo_company
+from diligens.sources.bolagsverket import BolagsverketError, make_bolagsverket_client
+from diligens.sources.scb import ScbError, make_scb_client
 
 app = typer.Typer(
     help="Diligens: SIE4 bokföring till Financial Due Diligence underlag.",
@@ -183,9 +188,55 @@ def screen(
     ] = None,
     lan: Annotated[list[str] | None, typer.Option(help="Länskod för säte, valfri.")] = None,
     out: Annotated[Path, typer.Option(help="Mapp för long list.")] = Path("output"),
+    topp: Annotated[
+        int, typer.Option(min=0, max=200, help="Hämta årsredovisning för så många bästa.")
+    ] = TOP_DEFAULT,
+    utan_bokslut: Annotated[
+        bool, typer.Option("--utan-bokslut", help="Bara SCB, inga årsredovisningar.")
+    ] = False,
 ) -> None:
-    """Screena förvärvskandidater via SCB och Bolagsverket (M6)."""
-    _not_ready("M6")
+    """Screena förvärvskandidater via SCB och Bolagsverket.
+
+    Exitkod 0: klart. 1: fel i indata, nycklar eller API.
+    """
+    criteria = ScreeningCriteria(
+        sni=[s.strip() for s in sni],
+        turnover_classes=[str(c) for c in oms_kl or []],
+        employee_classes=[str(c) for c in anst_kl or []],
+        counties=[c.strip().zfill(2) for c in lan or []],
+    )
+    settings = get_settings()
+    try:
+        scb = make_scb_client(settings)
+        registry = None if utan_bokslut else make_bolagsverket_client(settings)
+        result = run_screening(criteria, scb, registry, top=topp)
+        path = export_long_list(result, out)
+    except (ScbError, BolagsverketError) as exc:
+        typer.secho(f"Fel: {exc}", fg="red", err=True)
+        raise typer.Exit(code=EXIT_ERROR) from exc
+    except PermissionError as exc:
+        typer.secho(
+            f"Fel: kan inte skriva till {out}. Stäng filen i Excel och kör igen.",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(code=EXIT_ERROR) from exc
+    _print_screening(result)
+    typer.echo(f"\nLong list: {path}")
+
+
+def _print_screening(result: ScreeningResult) -> None:
+    missing = sum(
+        1 for c in result.candidates if c.financial and c.financial.status == "Saknas digitalt"
+    )
+    typer.secho(
+        f"{len(result.candidates)} kandidater av {result.units_scanned} bolag med vald SNI. "
+        f"Årsredovisning sökt för {result.reports_fetched}, saknas digitalt för {missing}.",
+        bold=True,
+    )
+    for rank, c in enumerate(result.candidates[:10], start=1):
+        status = c.financial.status if c.financial else "Ej hämtad"
+        typer.echo(f"  {rank:>2}. {c.total:>3} p  {c.unit.name} ({c.org_nr})  {status}")
 
 
 if __name__ == "__main__":

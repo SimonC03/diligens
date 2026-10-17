@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from diligens.config import Settings
 from diligens.models import ScbUnit, ScbUnitFull
 
 BASE_URL = "https://apiafr.scb.se"
@@ -71,6 +72,13 @@ def _message(status: int, detail: str) -> str:
     if status >= 500:
         return f"SCB svarar inte just nu (status {status}). Försök igen senare."
     return f"SCB kunde inte besvara frågan: {detail}"
+
+
+def make_scb_client(settings: Settings) -> "ScbClient":
+    """Client from the key in .env, which is passed on and never printed."""
+    if settings.scb_api_key is None:
+        raise ScbError("SCB_API_KEY saknas i .env.")
+    return ScbClient(settings.scb_api_key.get_secret_value())
 
 
 class ScbClient:

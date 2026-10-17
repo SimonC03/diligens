@@ -6,12 +6,14 @@ expires and fetched again once if the API rejects it. Organisation lookup, docum
 production environment. Credentials and tokens are never put in messages or logs.
 """
 
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
 
 import httpx
 
+from diligens.config import Settings
 from diligens.models import AnnualReport, DocumentInfo
 from diligens.sources.ixbrl import read_package
 
@@ -58,6 +60,18 @@ def _message(response: httpx.Response) -> str:
     return f"Bolagsverket kunde inte besvara frågan, status {status} {detail}."
 
 
+def make_bolagsverket_client(settings: Settings) -> "BolagsverketClient":
+    """Client from the credentials in .env, which are passed on and never printed."""
+    if settings.bolagsverket_client_id is None or settings.bolagsverket_client_secret is None:
+        raise BolagsverketError(
+            "BOLAGSVERKET_CLIENT_ID eller BOLAGSVERKET_CLIENT_SECRET saknas i .env."
+        )
+    return BolagsverketClient(
+        settings.bolagsverket_client_id.get_secret_value(),
+        settings.bolagsverket_client_secret.get_secret_value(),
+    )
+
+
 class BolagsverketClient:
     def __init__(
         self,
@@ -78,11 +92,16 @@ class BolagsverketClient:
         self._sleep = sleep
         self._token: str | None = None
         self._expires = 0.0
+        self._lock = threading.Lock()
 
     def close(self) -> None:
         self._http.close()
 
     def _access_token(self, refresh: bool = False) -> str:
+        with self._lock:  # screening calls the API from several threads
+            return self._token_locked(refresh)
+
+    def _token_locked(self, refresh: bool) -> str:
         if self._token and not refresh and self._clock() < self._expires:
             return self._token
         try:

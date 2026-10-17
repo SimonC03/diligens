@@ -474,3 +474,14 @@ class Candidate(BaseModel):
     @property
     def total(self) -> int:
         return self.profile_points + (self.financial.points or 0 if self.financial else 0)
+
+
+class ScreeningResult(BaseModel):
+    criteria: ScreeningCriteria
+    candidates: list[Candidate] = Field(description="best fit first")
+    units_scanned: int = Field(description="legal units with a target SNI at SCB")
+    reports_fetched: int = Field(description="candidates whose annual report was looked up")
+    labels: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="SCB code tables by name, for display"
+    )
+    generated: dt.date
