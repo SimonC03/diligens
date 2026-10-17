@@ -150,3 +150,16 @@ Format: `YYYY-MM-DD` decision, reason.
   placeholders (markdown list numbers excepted), unknown keys, dashes or more than 450 words
   is rejected and retried; a template with the same facts is used offline and on failure.
   Demo run with Haiku: memo accepted on the first attempt, whole analyze run 35 seconds.
+- 2026-10-17 MCP tools return Swedish text (markdown tables for lists) rather than JSON,
+  since the reader is the model talking to an advisor. Failures the model can act on (wrong
+  path, not a SIE file, unknown month, locked output folder, analysis errors) are raised as
+  ToolError so they arrive as readable text; nothing is raised as a protocol error.
+- 2026-10-17 `med_ai` defaults to on in the MCP tools; without an API key the tools fall
+  back to the deterministic run and say so, instead of failing. The analysis is cached per
+  resolved path, file modification time, AI setting and related party names, so follow-up
+  tools reuse it and a changed file is analysed again.
+- 2026-10-17 MCP cache: one analysis per file, guarded by a lock so parallel tool calls on a
+  cold cache run it once. A call reuses the cached analysis when the file is unchanged, the
+  AI setting matches and the related party names match (or none are given). hamta_nyckeltal
+  is deterministic and reuses any cached analysis or runs without AI. exportera_excel only
+  writes to output/ inside the project or to folders outside it.
